@@ -1,0 +1,8 @@
+{
+  "version": "3.0.0",
+  "channel": "stable",
+  "artifacts": {
+    "windowsInstaller": "Akansha-Setup.exe",
+    "windowsPortable": "Akansha-Portable.exe"
+  }
+}

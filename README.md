@@ -32,36 +32,29 @@ as an app on Windows, macOS, Linux, Android or iOS.
 
 ## 📦 Install On Any Device
 
-Single-click downloads are served from [`/landing.html`](/landing.html).
-
-| Platform | File | How to run |
+| Platform | Artefact | What it is |
 |---|---|---|
-| **Windows** | `Akansha-Setup-Windows.ps1` | Right-click → *Run with PowerShell* |
-| **Windows** | `Akansha-Windows-Launcher.bat` | Double-click |
-| **macOS** | `Akansha-macOS-Launcher.command` | Double-click |
-| **Linux** | `Akansha-Linux-Launcher.sh` | `chmod +x` then `./Akansha-Linux-Launcher.sh` |
-| **Android / iOS** | PWA | Tap **Install Akansha** on the landing page |
+| **Windows (production)** | `Akansha-Setup.exe` | **Real Electron desktop installer** — native window, bundled backend + runtime, desktop & Start-Menu shortcuts, uninstaller. No Node, npm or Git required. |
+| **Windows (portable)** | `Akansha-Portable.exe` | No-install portable desktop app. |
+| **Android / iOS** | PWA | Tap **Install Akansha** on the landing page. |
+| Windows / macOS / Linux | `…-Setup-Windows.ps1`, `…-macOS-Launcher.command`, `…-Linux-Launcher.sh` | **Developer / Source Mode** only — clones the repo, runs `npm install`/`build`, starts the dev server. Requires Node.js + Git. |
 
-The launchers install dependencies, build the production bundle, create a desktop
-shortcut (Windows), and start the Akansha runtime.
-
-### Building Genuine Native Binaries
-
-True signed `.exe` / `.dmg` / `.apk` artefacts need native toolchains. Configs are included
-so it's one command each:
+### Building the genuine Windows desktop installer
 
 ```bash
-# Windows .exe (NSIS installer) + portable
-npx electron-builder --win nsis portable
-
-# macOS .dmg (notarised)
-npx electron-builder --mac dmg
-
-# Android .apk
-npx cap add android && npx cap sync && cd android && ./gradlew assembleDebug
+npm run dist:win
+# -> next build, then electron-builder --win nsis portable
+# -> release/Akansha-Setup-<version>.exe  +  release/Akansha-Portable-<version>.exe
 ```
 
-`electron-builder.yml` and `capacitor.config.json` are already in the repo.
+The Electron app (`electron/main.js`) starts the packaged Next.js backend as a child
+process, waits for `/api/health`, and loads the production UI into its **own** desktop
+window — never the system browser. See `AKANSHA_WINDOWS_DESKTOP.md` for the full
+architecture, security model and lifecycle.
+
+> The landing page only enables the Windows `.exe` download when the built artifact is
+> actually present under `/downloads/`; otherwise it shows “Not built in this deployment”
+> instead of a dead link.
 
 ---
 

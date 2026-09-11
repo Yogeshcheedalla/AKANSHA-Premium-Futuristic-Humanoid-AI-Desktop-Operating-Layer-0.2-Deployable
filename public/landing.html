@@ -406,34 +406,24 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
   <div class="dl-panel" id="download">
     <div class="dl-head"><div class="dl-line"></div><span>Single-Click Download</span><div class="dl-line r"></div></div>
     <div class="dl-grid">
-      <a class="dl-card win" href="/downloads/Akansha-Setup-Windows.ps1" download>
+      <a class="dl-card win" id="winSetup" href="/downloads/Akansha-Setup.exe" download>
         <div class="dl-top">
           <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="1.5"><path d="M3 5.5 10.5 4.4v7.1H3zM12 4.2 21 3v8.5h-9zM3 12.5h7.5v7.1L3 18.5zM12 12.5h9V21l-9-1.2z"/></svg></div>
           <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
         </div>
-        <h3>Windows</h3>
-        <p>Full installer &amp; desktop launcher. Creates a desktop shortcut, installs dependencies, builds and starts Akansha.</p>
-        <div class="dl-meta"><span class="pulse-dot"></span><em>Ready</em><span>·</span><span>PowerShell Installer</span></div>
+        <h3>Windows Desktop App</h3>
+        <p>Real <span class="mono">.exe</span> installer. Native desktop window, auto-starts the bundled backend, desktop + Start Menu shortcuts and an uninstaller. No Node, npm or Git required.</p>
+        <div class="dl-meta"><span class="pulse-dot"></span><em id="winVer">v3.0.0</em><span>·</span><span>Windows Installer (.exe)</span></div>
       </a>
 
-      <a class="dl-card win" href="/downloads/Akansha-Windows-Launcher.bat" download>
+      <a class="dl-card win" id="winPortable" href="/downloads/Akansha-Portable.exe" download>
         <div class="dl-top">
-          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="1.5"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="1.5"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
           <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
         </div>
-        <h3>Windows Quick Launch</h3>
-        <p>Double-click <span class="mono">.bat</span> launcher. No PowerShell required — starts Akansha instantly.</p>
-        <div class="dl-meta"><span class="pulse-dot"></span><em>Ready</em><span>·</span><span>Batch Launcher</span></div>
-      </a>
-
-      <a class="dl-card mac" href="/downloads/Akansha-macOS-Launcher.command" download>
-        <div class="dl-top">
-          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.5"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.7-3.9zM14.4 5.6c.7-.8 1.1-2 1-3.1-1 .1-2.3.7-3 1.5-.7.7-1.2 1.9-1 3 1.1.1 2.3-.6 3-1.4z"/></svg></div>
-          <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
-        </div>
-        <h3>macOS</h3>
-        <p>Double-click <span class="mono">.command</span> installer. Installs, builds and launches Akansha on your Mac.</p>
-        <div class="dl-meta"><span class="pulse-dot"></span><em>Ready</em><span>·</span><span>macOS Launcher</span></div>
+        <h3>Windows Portable</h3>
+        <p>No-install portable <span class="mono">.exe</span> — run the Akansha desktop app from any folder.</p>
+        <div class="dl-meta"><span class="pulse-dot"></span><em id="portVer">v3.0.0</em><span>·</span><span>Portable (.exe)</span></div>
       </a>
 
       <a class="dl-card and" href="/" id="androidInstall">
@@ -446,14 +436,34 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
         <div class="dl-meta"><span class="pulse-dot"></span><em>Install Now</em><span>·</span><span>Progressive App</span></div>
       </a>
 
-      <a class="dl-card lnx" href="/downloads/Akansha-Linux-Launcher.sh" download>
+      <a class="dl-card win" href="/downloads/Akansha-Setup-Windows.ps1" download>
         <div class="dl-top">
-          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.7)" stroke-width="1.5"><path d="M4 19h16M6 19V9m4 10V9m4 10V9m4 10V9M12 3 4 9h16z"/></svg></div>
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
           <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
         </div>
-        <h3>Linux</h3>
-        <p>Shell installer for Ubuntu, Fedora and Arch. Installs and launches the Akansha runtime.</p>
-        <div class="dl-meta"><span class="pulse-dot"></span><em>Ready</em><span>·</span><span>Shell Script</span></div>
+        <h3>Developer / Source Mode (Windows)</h3>
+        <p>PowerShell bootstrap that clones the source, runs <span class="mono">npm install</span> / <span class="mono">build</span> and starts the dev server. <strong>Requires Node.js + Git.</strong> For developers only — not the packaged desktop app.</p>
+        <div class="dl-meta"><span>Developer</span><span>·</span><span>Requires Node + Git</span></div>
+      </a>
+
+      <a class="dl-card mac" href="/downloads/Akansha-macOS-Launcher.command" download>
+        <div class="dl-top">
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.7-3.9zM14.4 5.6c.7-.8 1.1-2 1-3.1-1 .1-2.3.7-3 1.5-.7.7-1.2 1.9-1 3 1.1.1 2.3-.6 3-1.4z"/></svg></div>
+          <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
+        </div>
+        <h3>Developer / Source Mode (macOS)</h3>
+        <p>Shell bootstrap that installs, builds and launches from source. <strong>Requires Node.js + Git.</strong></p>
+        <div class="dl-meta"><span>Developer</span><span>·</span><span>Requires Node + Git</span></div>
+      </a>
+
+      <a class="dl-card lnx" href="/downloads/Akansha-Linux-Launcher.sh" download>
+        <div class="dl-top">
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M4 19h16M6 19V9m4 10V9m4 10V9m4 10V9M12 3 4 9h16z"/></svg></div>
+          <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
+        </div>
+        <h3>Developer / Source Mode (Linux)</h3>
+        <p>Shell bootstrap for Ubuntu, Fedora and Arch. <strong>Requires Node.js + Git.</strong></p>
+        <div class="dl-meta"><span>Developer</span><span>·</span><span>Requires Node + Git</span></div>
       </a>
     </div>
 
@@ -793,6 +803,33 @@ document.querySelectorAll('[data-count]').forEach(el=>co.observe(el));
 if ('serviceWorker' in navigator){
   addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
+/* ═════════ REAL INSTALLER: version + existence guard ═════════ */
+(function(){
+  async function checkArtifact(id, url){
+    const card=document.getElementById(id); if(!card) return;
+    try{
+      const r=await fetch(url,{method:'HEAD'});
+      if(!r.ok) markUnavailable(card);
+    }catch(_){ markUnavailable(card); }
+  }
+  function markUnavailable(card){
+    card.removeAttribute('href');
+    card.removeAttribute('download');
+    card.style.pointerEvents='none';
+    card.style.opacity='.5';
+    const meta=card.querySelector('.dl-meta');
+    if(meta){ meta.innerHTML='<span>Not built in this deployment</span><span>·</span><span>run: npm run dist:win</span>'; }
+  }
+  fetch('/downloads/version.json').then(r=>r.ok?r.json():null).then(v=>{
+    if(v&&v.version){
+      const t='v'+v.version;
+      const w=document.getElementById('winVer'); if(w) w.textContent=t;
+      const p=document.getElementById('portVer'); if(p) p.textContent=t;
+    }
+  }).catch(()=>{});
+  checkArtifact('winSetup','/downloads/Akansha-Setup.exe');
+  checkArtifact('winPortable','/downloads/Akansha-Portable.exe');
+})();
 </script>
 </body>
 </html>

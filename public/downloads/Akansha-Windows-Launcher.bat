@@ -1,11 +1,14 @@
 @echo off
-title AKANSHA - Premium AI Desktop Companion
+title AKANSHA - Developer / Browser Mode
 color 0B
 echo.
 echo   ==========================================
 echo        A K A N S H A
-echo      Premium AI Desktop Companion
+echo     DEVELOPER / BROWSER MODE (not the app)
 echo   ==========================================
+echo   NOTE: Normal users should install Akansha-Setup.exe
+echo         (the native desktop app). This .bat only starts
+echo         the local server and opens it in a browser.
 echo.
 echo   [1/4] Checking runtime...
 where node >nul 2>nul

@@ -156,3 +156,8 @@ model-cache/
 artifacts/
 screenshots/
 recordings/
+
+# Moved build orphans + packaging temp (never commit)
+.next-orphans/
+release/
+release/*.log

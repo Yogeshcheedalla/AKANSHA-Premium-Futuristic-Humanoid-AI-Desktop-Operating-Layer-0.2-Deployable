@@ -1,24 +1,32 @@
 # ============================================================
-#  AKANSHA — Windows Installer & Launcher
-#  Premium Futuristic AI Desktop Companion
+#  AKANSHA — DEVELOPER / SOURCE-MODE BOOTSTRAP (Windows)
+# ------------------------------------------------------------
+#  This is NOT the packaged desktop installer.
+#  It clones the source, runs `npm install` / `npm run build`,
+#  and starts the development server. Requires Node.js + Git.
+#
+#  For normal use, download the real desktop app:  Akansha-Setup.exe
+#  (built via `npm run dist:win`, which produces an Electron NSIS
+#   installer with a native window, shortcuts and an uninstaller).
 # ============================================================
 #  Run:  Right-click -> "Run with PowerShell"
-#  Or:   Akansha-Windows-Launcher.bat  (double-click)
 # ============================================================
 
 $ErrorActionPreference = "Continue"
 $AppDir = "$env:LOCALAPPDATA\Akansha"
 
-# Set $RepoUrl to the ACTUAL published repository before shipping this installer.
-# It intentionally has no working default so we never clone a fake/placeholder URL.
-$RepoUrl = "https://github.com/your-org/akansha.git"
+# Developer bootstrap only. The repo URL must be supplied explicitly — there is
+# intentionally NO hardcoded/placeholder repository. Set $env:AKANSHA_REPO or pass
+# a local source folder path.
+$RepoUrl = $env:AKANSHA_REPO
 
-$Repo = Read-Host "Akansha source folder path (blank = git clone from repo)"
+$Repo = Read-Host "Akansha source folder path (blank = git clone from `$env:AKANSHA_REPO)"
 if ([string]::IsNullOrWhiteSpace($Repo)) {
-  if ($RepoUrl -eq "https://github.com/your-org/akansha.git") {
-    Write-Host "  [!] No source path given and \$RepoUrl is still the placeholder." -ForegroundColor Red
-    Write-Host "      Provide a local source folder, or set \$RepoUrl in this script to" -ForegroundColor Red
-    Write-Host "      the real published repository, then re-run." -ForegroundColor Red
+  if ([string]::IsNullOrWhiteSpace($RepoUrl)) {
+    Write-Host "  [!] This is a DEVELOPER bootstrap, not the packaged desktop app." -ForegroundColor Red
+    Write-Host "      Provide a local source folder, or set the AKANSHA_REPO env var" -ForegroundColor Red
+    Write-Host "      to your real repository URL, then re-run." -ForegroundColor Red
+    Write-Host "      For normal use, install Akansha-Setup.exe instead." -ForegroundColor Yellow
     exit 1
   }
   $Repo = $RepoUrl
@@ -26,8 +34,8 @@ if ([string]::IsNullOrWhiteSpace($Repo)) {
 
 Write-Host ""
 Write-Host "  ======================================" -ForegroundColor Cyan
-Write-Host "     A K A N S H A   -   INSTALLER" -ForegroundColor White
-Write-Host "     Premium AI Desktop Companion" -ForegroundColor DarkCyan
+Write-Host "     A K A N S H A   -   DEVELOPER BOOTSTRAP" -ForegroundColor White
+Write-Host "     (source install: requires Node.js + Git)" -ForegroundColor DarkCyan
 Write-Host "  ======================================" -ForegroundColor Cyan
 Write-Host ""
 

@@ -1,11 +1,15 @@
 # ═══════════════════════════════════════════════════════════
-#  AKANSHA — Electron Builder config
-#  Produces genuine native installers for Windows and macOS.
+#  AKANSHA — Electron Builder (real Windows desktop installer)
 #
-#  Usage:
-#    npx electron-builder --win nsis portable   → .exe
-#    npx electron-builder --mac dmg             → .dmg
-#    npx electron-builder --linux AppImage      → .AppImage
+#  Produces:
+#    release/Akansha-Setup-<version>.exe      (NSIS installer)
+#    release/Akansha-Portable-<version>.exe   (portable)
+#
+#  The packaged app bundles the Next.js production build + its
+#  Node runtime (via Electron), so the end user needs NO git,
+#  NO Node, NO npm, and never opens a browser.
+#
+#  Build:  npm run dist:win
 # ═══════════════════════════════════════════════════════════
 
 appId: ai.akansha.desktop
@@ -16,29 +20,41 @@ directories:
   output: release
   buildResources: build
 
+# Next.js `next start` reads real files from disk, so the app must NOT be
+# packed into an asar archive.
+asar: false
+
+# What ships inside the app bundle (production node_modules is included by
+# default by electron-builder; these are the application files).
 files:
   - .next/**/*
+  - "!**/.next/dev/**"
+  - "!**/.next/standalone/**"
+  - "!**/.next/cache/**"
   - electron/**/*
   - public/**/*
   - package.json
+  - "!public/downloads/*.exe"
   - "!**/*.map"
-  - "!**/node_modules/*/{test,__tests__,tests,example,examples}/**"
+  - "!**/{.cache,tmp,temp}/**"
 
 extraMetadata:
   main: electron/main.js
 
 # ─────────── WINDOWS ───────────
-# NOTE: To produce branded installers, add build/icon.ico and a LICENSE file.
-# They are intentionally not committed here, so the explicit references are
-# commented out and electron-builder falls back to its defaults.
+# build/icon.png (>= 256x256) is converted to .ico automatically by electron-builder.
 win:
   target:
     - target: nsis
-      arch: [x64, arm64]
+      arch: [x64]
     - target: portable
       arch: [x64]
-  # icon: build/icon.ico
-  artifactName: Akansha-Setup-${version}-${arch}.${ext}
+  icon: build/icon.png
+  artifactName: Akansha-Setup-${version}.${ext}
+  requestedExecutionLevel: asInvoker
+  # Skip signing/rcedit so the build does not require the winCodeSign toolset
+  # (which cannot be extracted in non-admin / no-Developer-Mode environments).
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false
@@ -47,47 +63,32 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Akansha
-  # installerIcon: build/icon.ico
-  # uninstallerIcon: build/icon.ico
-  # license: LICENSE
+  deleteAppDataOnUninstall: false
+  artifactName: Akansha-Setup-${version}.${ext}
+  uninstallDisplayName: Akansha
+
+portable:
+  artifactName: Akansha-Portable-${version}.${ext}
 
 # ─────────── macOS ───────────
-# NOTE: For signed/notarized distribution add build/icon.icns and
-# build/entitlements.mac.plist, then re-enable the commented lines and set
-# hardenedRuntime: true.
 mac:
   target:
     - target: dmg
       arch: [x64, arm64]
   category: public.app-category.productivity
-  # icon: build/icon.icns
+  icon: build/icon.png
   artifactName: Akansha-${version}-${arch}.${ext}
   hardenedRuntime: false
   gatekeeperAssess: false
-  # entitlements: build/entitlements.mac.plist
-  # entitlementsInherit: build/entitlements.mac.plist
 
-dmg:
-  title: Akansha ${version}
-  window:
-    width: 620
-    height: 400
-  contents:
-    - x: 190
-      y: 200
-    - x: 420
-      y: 200
-      type: link
-      path: /Applications
-
-# ─────────── LINUX ───────────
+# ─────────── Linux ───────────
 linux:
   target:
     - AppImage
     - deb
   category: Utility
-  # icon: build/icons
+  icon: build/icon.png
   artifactName: Akansha-${version}-${arch}.${ext}
 
-# Auto-update: disabled until a release repository is configured.
+# Auto-update: disabled until a signed release feed is configured.
 publish: null

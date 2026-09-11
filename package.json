@@ -1,6 +1,16 @@
 {
   "name": "akansha-advanced-humanoid-assistant",
+  "productName": "Akansha",
+  "version": "3.0.0",
   "private": true,
+  "description": "Akansha — a premium multimodal humanoid AI desktop assistant for Windows.",
+  "author": {
+    "name": "Akansha",
+    "email": "team@akansha.ai"
+  },
+  "homepage": "https://akansha.ai",
+  "license": "UNLICENSED",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,12 +23,13 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:up": "docker compose up -d db",
-    "dist:win": "electron-builder --win nsis portable",
-    "dist:mac": "electron-builder --mac dmg",
-    "dist:linux": "electron-builder --linux AppImage deb",
+    "electron:dev": "npm run build && electron .",
+    "dist:win": "npm run build && electron-builder --win nsis portable",
+    "dist:mac": "npm run build && electron-builder --mac dmg",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb",
+    "dist:all": "npm run dist:win && npm run dist:mac && npm run dist:linux",
     "dist:android": "npx cap add android && npx cap sync android && cd android && ./gradlew assembleDebug",
-    "dist:ios": "npx cap add ios && npx cap sync ios && cd ios && pod install && xcodebuild -scheme App -sdk iphoneos",
-    "dist:all": "npm run build && npm run dist:win && npm run dist:mac && npm run dist:linux"
+    "dist:ios": "npx cap add ios && npx cap sync ios && cd ios && pod install && xcodebuild -scheme App -sdk iphoneos"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -40,12 +51,13 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "0.31.10",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "postcss": "8.5.8",
     "tailwindcss": "4.1.17",
     "tsx": "^4.23.13",
     "typescript": "5.9.3"
-  },
-  "main": "electron/main.js"
+  }
 }

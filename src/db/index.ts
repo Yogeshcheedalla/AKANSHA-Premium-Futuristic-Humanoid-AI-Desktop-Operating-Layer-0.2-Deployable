@@ -1,54 +1,50 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-
-const databaseUrl = process.env.DATABASE_URL;
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 /**
- * Akansha can boot and serve the assistant WITHOUT a database.
+ * Akansha boots and serves the assistant WITHOUT a database.
  *
- * Persistence (providers, memory, ledger, traces, credentials) is optional:
- * when DATABASE_URL is absent every db.* call throws a clear, typed error that
- * the (already try/catch-wrapped) call sites degrade gracefully from. The
- * server therefore starts, the health endpoint reports an honest status, and
- * model providers fall back to built-in/env configuration in memory.
- *
- * Set DATABASE_URL and run migrations to enable durable storage.
+ * `pg` is a native-ish driver that Next's Turbopack externalizes; loading it
+ * eagerly breaks once the app is relocated into a packaged (Electron) tree.
+ * So we require `pg` / `drizzle-orm/node-postgres` LAZILY, only when a
+ * DATABASE_URL is actually configured. With no DATABASE_URL, `db` is a
+ * throwing proxy that the (already try/catch-wrapped) call sites degrade from,
+ * and `pg` is never imported at all.
  */
-export const isDbConfigured = !!databaseUrl;
+export const isDbConfigured = !!process.env.DATABASE_URL;
+
+type Db = NodePgDatabase<any>;
 
 const globalForDb = globalThis as typeof globalThis & {
-  __arenaNextJsPostgresqlPool?: Pool;
+  __akanshaDb?: Db;
 };
 
-let _pool: Pool | null = null;
-let _client: ReturnType<typeof drizzle> | null = null;
+let _db: Db | null = globalForDb.__akanshaDb ?? null;
 
-if (databaseUrl) {
-  _pool =
-    globalForDb.__arenaNextJsPostgresqlPool ??
-    new Pool({ connectionString: databaseUrl });
-
-  if (process.env.NODE_ENV !== "production") {
-    globalForDb.__arenaNextJsPostgresqlPool = _pool;
-  }
-
-  _client = drizzle(_pool);
+function createRealDb(): Db {
+  // Lazy requires — only executed when a database is configured.
+  const { Pool } = require("pg");
+  const { drizzle } = require("drizzle-orm/node-postgres");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  return drizzle(pool);
 }
 
-export const pool = _pool;
-
-function makeUnavailableDb(): ReturnType<typeof drizzle> {
+function makeUnavailableDb(): Db {
   const fail = () => {
     throw new Error(
       "DATABASE_URL is not set — persistence is disabled. Configure DATABASE_URL and run `npm run db:migrate` to enable storage."
     );
   };
-  // Proxy so any `db.<method>(...)` access throws a clear, catchable error
-  // instead of crashing the process at import time.
-  return new Proxy({} as ReturnType<typeof drizzle>, {
-    get: () => fail,
-    apply: () => fail,
-  });
+  return new Proxy({} as Db, { get: () => fail, apply: () => fail });
 }
 
-export const db: ReturnType<typeof drizzle> = _client ?? makeUnavailableDb();
+/** Lazily-resolved drizzle client (or a throwing proxy when unconfigured). */
+export const db = new Proxy({} as Db, {
+  get(_t, prop) {
+    if (!_db) {
+      _db = isDbConfigured ? createRealDb() : makeUnavailableDb();
+      if (isDbConfigured) globalForDb.__akanshaDb = _db;
+    }
+    const value = (_db as any)[prop];
+    return typeof value === "function" ? value.bind(_db) : value;
+  },
+});
