@@ -1,0 +1,25 @@
+{
+  "name": "Akansha — Premium AI Desktop Companion",
+  "short_name": "Akansha",
+  "description": "A premium futuristic humanoid AI operating layer. Multi-provider intelligence, mission orchestration, capability fabric, and self-improving memory.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#010208",
+  "theme_color": "#00f0ff",
+  "categories": ["productivity", "utilities", "developer"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Command Center", "url": "/", "description": "Talk to Akansha" },
+    { "name": "AI Providers", "url": "/#providers", "description": "Manage model providers" },
+    { "name": "Architecture Graph", "url": "/#graph", "description": "Live capability topology" }
+  ]
+}

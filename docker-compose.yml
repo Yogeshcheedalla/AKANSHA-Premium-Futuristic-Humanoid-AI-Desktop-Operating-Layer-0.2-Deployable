@@ -1,0 +1,24 @@
+# Local Postgres for Akansha persistence (optional — the app runs without it).
+#   docker compose up -d db
+#   npm run db:push
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: akansha-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: akansha
+    ports:
+      - "5432:5432"
+    volumes:
+      - akansha_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d akansha"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  akansha_pgdata:

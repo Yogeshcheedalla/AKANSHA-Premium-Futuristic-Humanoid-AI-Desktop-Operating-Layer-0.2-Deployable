@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════
+#  AKANSHA — Electron Builder config
+#  Produces genuine native installers for Windows and macOS.
+#
+#  Usage:
+#    npx electron-builder --win nsis portable   → .exe
+#    npx electron-builder --mac dmg             → .dmg
+#    npx electron-builder --linux AppImage      → .AppImage
+# ═══════════════════════════════════════════════════════════
+
+appId: ai.akansha.desktop
+productName: Akansha
+copyright: Copyright © Akansha
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - .next/**/*
+  - electron/**/*
+  - public/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/node_modules/*/{test,__tests__,tests,example,examples}/**"
+
+extraMetadata:
+  main: electron/main.js
+
+# ─────────── WINDOWS ───────────
+# NOTE: To produce branded installers, add build/icon.ico and a LICENSE file.
+# They are intentionally not committed here, so the explicit references are
+# commented out and electron-builder falls back to its defaults.
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64]
+  # icon: build/icon.ico
+  artifactName: Akansha-Setup-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Akansha
+  # installerIcon: build/icon.ico
+  # uninstallerIcon: build/icon.ico
+  # license: LICENSE
+
+# ─────────── macOS ───────────
+# NOTE: For signed/notarized distribution add build/icon.icns and
+# build/entitlements.mac.plist, then re-enable the commented lines and set
+# hardenedRuntime: true.
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.productivity
+  # icon: build/icon.icns
+  artifactName: Akansha-${version}-${arch}.${ext}
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  # entitlements: build/entitlements.mac.plist
+  # entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  title: Akansha ${version}
+  window:
+    width: 620
+    height: 400
+  contents:
+    - x: 190
+      y: 200
+    - x: 420
+      y: 200
+      type: link
+      path: /Applications
+
+# ─────────── LINUX ───────────
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  # icon: build/icons
+  artifactName: Akansha-${version}-${arch}.${ext}
+
+# Auto-update: disabled until a release repository is configured.
+publish: null

@@ -1,0 +1,158 @@
+# ═══════════════════════════════════════════════════════════
+#  AKANSHA — .gitignore
+# ═══════════════════════════════════════════════════════════
+
+# ───── Node ─────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.npm/
+.yarn/
+
+# ───── Next.js ─────
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+.turbo/
+.vercel/
+
+# ───── Production / Bundles ─────
+dist/
+release/
+packaged/
+*.tsbuildinfo
+
+# ───── ⚠️ SECRETS — NEVER COMMIT ⚠️ ─────
+# Raw API keys and credentials must never reach version control.
+.env
+.env.*
+!.env.example
+
+# Vault / credential artefacts
+*.vault
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.secrets
+credentials.json
+secrets/
+.sops.yaml
+.decrypted*
+
+# Service worker generated build output
+public/sw.js.map
+
+# ───── Databases ─────
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+data/
+drift/
+
+# ───── Native build outputs (Electron / Tauri / Capacitor) ─────
+electron-out/
+tauri-target/
+src-tauri/target/
+android/
+ios/
+*.apk
+*.aab
+*.exe
+*.dmg
+*.msi
+*.AppImage
+*.deb
+*.snap
+*.nsis.7z
+*.blockmap
+mac/
+linux/
+
+# ───── Logs ─────
+logs/
+*.log
+pino-*.log
+lighthouse-report.html
+
+# ───── Testing / Coverage ─────
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+junit.xml
+
+# ───── Caches ─────
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+tmp/
+.temp/
+
+# ───── OS junk ─────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# ───── Editors / IDE ─────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*.code-workspace
+.history/
+
+# ───── Local model weights (large binaries) ─────
+/models/
+*.gguf
+*.bin
+*.safetensors
+*.onnx
+
+# ───── Orca / git worktrees ─────
+.worktrees/
+worktrees/
+
+# ───── Misc ─────
+.vercel
+.eslintcache
+*.local
+.claude/
+.sender/
+.serena/
+
+# Local auth pairing token (never commit)
+.akansha-auth.json
+
+# ───── Additional generated / local / capture artifacts ─────
+temp/
+temp_captures/
+model-cache/
+.vite/
+artifacts/
+screenshots/
+recordings/

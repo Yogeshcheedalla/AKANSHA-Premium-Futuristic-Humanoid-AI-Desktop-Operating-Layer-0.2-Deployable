@@ -1,0 +1,123 @@
+/**
+ * Execution backend contracts.
+ *
+ * These interfaces are the clean boundary between Akansha's Master Orchestrator
+ * and whatever actually drives the machine. The shipped implementation is
+ * WindowsComputerUseProvider (PowerShell + UI Automation). A builtin_computer_use
+ * MCP adapter can implement the same ComputerUseProvider interface later without
+ * touching the orchestrator, planner, verifier or recovery logic.
+ */
+
+export type FailureClass =
+  | 'AUTH_EXPIRED'
+  | 'PERMISSION_DENIED'
+  | 'APP_NOT_FOUND'
+  | 'WINDOW_NOT_FOUND'
+  | 'ELEMENT_NOT_FOUND'
+  | 'TIMEOUT'
+  | 'UI_CHANGED'
+  | 'NETWORK_ERROR'
+  | 'PROVIDER_ERROR'
+  | 'VERIFICATION_FAILED'
+  | 'RESOURCE_LIMIT'
+  | 'UNKNOWN_STATE';
+
+export type MissionStatus =
+  | 'PLANNED'
+  | 'RUNNING'
+  | 'WAITING'
+  | 'EXECUTING'
+  | 'OBSERVING'
+  | 'VERIFYING'
+  | 'RECOVERING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'NEEDS_CONFIRMATION';
+
+export type RiskTier = 'low' | 'medium' | 'high' | 'critical';
+
+/** A single atomic operation the provider can perform. */
+export type ComputerAction =
+  | { kind: 'launch'; app: string }
+  | { kind: 'focus'; target: string }
+  | { kind: 'observe'; target?: string }
+  | { kind: 'type'; text: string; target?: string }
+  | { kind: 'key'; keys: string; target?: string }
+  | { kind: 'click'; target: string; double?: boolean }
+  | { kind: 'scroll'; direction: 'up' | 'down'; amount?: number; target?: string }
+  | { kind: 'screenshot' }
+  | { kind: 'listWindows' };
+
+export interface WindowObservation {
+  found: boolean;
+  pid?: number;
+  title?: string;
+  /** Visible text of the focused edit control, when readable. */
+  text?: string;
+  /** All top-level window titles currently open (for diagnostics). */
+  windows?: string[];
+}
+
+/** Structured evidence produced by every executed action. */
+export interface ExecutionEvidence {
+  requestId: string;
+  missionId: string;
+  toolCallId: string;
+  action: string;
+  target: string;
+  startedAt: number;
+  completedAt?: number;
+  observation?: WindowObservation;
+  verification?: { passed: boolean; method: string; detail: string };
+  status: 'ok' | 'failed';
+  failureReason?: string;
+  failureClass?: FailureClass;
+  provider: string;
+  attempts: number;
+}
+
+export interface ExecutionStep {
+  id: string;
+  action: ComputerAction;
+  /** Human-readable intent of this step. */
+  description: string;
+  /** What must be true afterwards for this step to count as done. */
+  expect?: {
+    windowTitleContains?: string;
+    appRunning?: string;
+    textContains?: string;
+  };
+  status: 'PENDING' | 'EXECUTING' | 'OBSERVING' | 'VERIFYING' | 'DONE' | 'FAILED';
+  evidence?: ExecutionEvidence;
+  attemptCount: number;
+}
+
+export interface ExecutionPlan {
+  goal: string;
+  riskTier: RiskTier;
+  permissions: string[];
+  requiresConfirmation: boolean;
+  steps: ExecutionStep[];
+}
+
+export interface ExecutionResult {
+  status: Extract<MissionStatus, 'COMPLETED' | 'FAILED' | 'NEEDS_CONFIRMATION' | 'CANCELLED'>;
+  summary: string;
+  evidence: ExecutionEvidence[];
+  failureClass?: FailureClass;
+}
+
+export interface ComputerUseProvider {
+  readonly id: string;
+  /** Cheap capability probe — is this provider actually usable right now? */
+  isAvailable(): Promise<boolean>;
+  launch(app: string): Promise<WindowObservation>;
+  focus(target: string): Promise<WindowObservation>;
+  observe(target?: string): Promise<WindowObservation>;
+  type(text: string, target?: string): Promise<WindowObservation>;
+  key(keys: string, target?: string): Promise<WindowObservation>;
+  click(target: string, double?: boolean): Promise<WindowObservation>;
+  scroll(direction: 'up' | 'down', amount?: number, target?: string): Promise<WindowObservation>;
+  listWindows(): Promise<string[]>;
+}

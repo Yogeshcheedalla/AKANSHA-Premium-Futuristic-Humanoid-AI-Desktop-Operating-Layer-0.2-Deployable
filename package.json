@@ -1,0 +1,51 @@
+{
+  "name": "akansha-advanced-humanoid-assistant",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:up": "docker compose up -d db",
+    "dist:win": "electron-builder --win nsis portable",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "dist:android": "npx cap add android && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "dist:ios": "npx cap add ios && npx cap sync ios && cd ios && pod install && xcodebuild -scheme App -sdk iphoneos",
+    "dist:all": "npm run build && npm run dist:win && npm run dist:mac && npm run dist:linux"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "dotenv": "17.3.1",
+    "drizzle-orm": "0.45.2",
+    "framer-motion": "^13.2.0",
+    "lucide-react": "^1.44.0",
+    "next": "16.2.6",
+    "openai": "^7.13.0",
+    "pg": "8.20.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.17",
+    "@types/node": "22.19.15",
+    "@types/pg": "8.18.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "postcss": "8.5.8",
+    "tailwindcss": "4.1.17",
+    "tsx": "^4.23.13",
+    "typescript": "5.9.3"
+  },
+  "main": "electron/main.js"
+}
