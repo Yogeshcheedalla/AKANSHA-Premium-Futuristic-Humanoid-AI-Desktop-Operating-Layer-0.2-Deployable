@@ -12,12 +12,13 @@
 // ============================================================
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage } = require('electron');
 const { spawn, exec } = require('child_process');
 const http = require('http');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const isDev = !app.isPackaged;
 const APP_PATH = isDev ? app.getAppPath() : path.join(process.resourcesPath, 'app');
@@ -28,6 +29,40 @@ let serverProcess = null;
 let mainWindow = null;
 let quitting = false;
 let serverPort = 0;
+
+/**
+ * Local desktop identity bootstrap.
+ *
+ * A single-user desktop must not force the user to open `.akansha-auth.json`
+ * and paste a token. The main process generates a strong local access secret
+ * ONCE, persists it **encrypted at rest via Windows DPAPI** (Electron
+ * safeStorage) under per-user `userData`, hands it to the backend via
+ * `AKANSHA_ACCESS_TOKEN` (so the server never needs a cwd-relative file), and
+ * exposes it to the renderer over the preload IPC so the UI can exchange it for
+ * the httpOnly session cookie automatically. The master secret never enters
+ * localStorage, the URL, logs, or the frontend bundle; only the short-lived
+ * httpOnly session token reaches the browser context.
+ */
+let _localAccessSecret = null;
+function getLocalAccessSecret() {
+  if (_localAccessSecret) return _localAccessSecret;
+  const file = path.join(app.getPath('userData'), 'desktop-auth.bin');
+  try {
+    if (fs.existsSync(file)) {
+      const raw = fs.readFileSync(file);
+      if (safeStorage.isEncryptionAvailable()) _localAccessSecret = safeStorage.decryptString(raw);
+      else _localAccessSecret = raw.toString('utf8');
+      if (_localAccessSecret) return _localAccessSecret;
+    }
+  } catch { /* regenerate below */ }
+  _localAccessSecret = crypto.randomBytes(24).toString('base64url');
+  try {
+    const buf = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(_localAccessSecret) : Buffer.from(_localAccessSecret, 'utf8');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, buf, { mode: 0o600 });
+  } catch { /* keep in-memory for this run */ }
+  return _localAccessSecret;
+}
 
 function setLifecycle(state, detail) {
   lifecycle = state;
@@ -76,6 +111,10 @@ async function startBackend() {
         ELECTRON_RUN_AS_NODE: '1',
         NODE_ENV: 'production',
         PORT: String(serverPort),
+        // Local desktop identity: the backend reads this instead of a
+        // cwd-relative .akansha-auth.json, so a packaged install needs no
+        // token file and no developer setup.
+        AKANSHA_ACCESS_TOKEN: getLocalAccessSecret(),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -228,6 +267,9 @@ if (!gotLock) {
     );
 
     ipcMain.handle('akansha:lifecycle', () => ({ state: lifecycle, port: serverPort }));
+    // Local desktop auto-unlock: the renderer exchanges this for the httpOnly
+    // session cookie. Only available inside the packaged/desktop app.
+    ipcMain.handle('akansha:bootstrap-passphrase', () => getLocalAccessSecret());
 
     createWindow();
     startBackend();

@@ -61,6 +61,24 @@ export const CommandWorkspace = () => {
     return () => { offFinal(); offPartial(); offState(); };
   }, []);
 
+  // Desktop auto-unlock: inside the packaged app, the main process provides a
+  // local access secret over IPC; we exchange it for the httpOnly session cookie
+  // automatically, so the user never sees the token gate. Browser/dev access
+  // (no desktop bridge) keeps the manual authentication path.
+  useEffect(() => {
+    const desk = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+    if (!desk?.isDesktop || typeof desk.getBootstrapPassphrase !== 'function') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const passphrase = await desk.getBootstrapPassphrase();
+        if (!passphrase || cancelled) return;
+        await login(passphrase);
+      } catch { /* fall back to the manual gate */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;

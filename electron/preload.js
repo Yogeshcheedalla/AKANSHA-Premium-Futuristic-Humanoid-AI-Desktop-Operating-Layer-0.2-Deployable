@@ -35,4 +35,11 @@ contextBridge.exposeInMainWorld('akanshaDesktop', {
   getLifecycle() {
     return ipcRenderer.invoke('akansha:lifecycle');
   },
+
+  // Local desktop identity bootstrap: returns the access secret so the UI can
+  // exchange it for the httpOnly session cookie automatically (no manual token).
+  // Browser (non-desktop) users never get this and still use the manual gate.
+  getBootstrapPassphrase() {
+    return ipcRenderer.invoke('akansha:bootstrap-passphrase');
+  },
 });
