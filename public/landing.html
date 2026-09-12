@@ -404,8 +404,28 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
 
   <!-- ══════════ DOWNLOADS ══════════ -->
   <div class="dl-panel" id="download">
-    <div class="dl-head"><div class="dl-line"></div><span>Single-Click Download</span><div class="dl-line r"></div></div>
-    <div class="dl-grid">
+    <style>
+      .plat-tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:6px 0 18px}
+      .ptab{cursor:pointer;border:1px solid rgba(139,148,180,.22);background:rgba(255,255,255,.03);color:#aeb8d0;border-radius:99px;padding:8px 18px;font-size:13px;letter-spacing:.02em;transition:.18s}
+      .ptab:hover{color:#e8edf7;border-color:rgba(0,240,255,.4)}
+      .ptab.active{color:#06121e;background:linear-gradient(90deg,#00f0ff,#a855f7);border-color:transparent;font-weight:700}
+      .plat-panel{max-width:640px;margin:0 auto}
+      .plat-panel[hidden]{display:none}
+      .plat-available{text-align:center;color:var(--dim);font-size:12.5px;margin:16px 0 4px;letter-spacing:.02em}
+      .dl-cta{margin:10px 0 2px;padding:11px 12px;border-radius:11px;background:linear-gradient(90deg,rgba(0,240,255,.16),rgba(168,85,247,.16));border:1px solid rgba(0,240,255,.5);color:#8fe9ff;text-align:center;font-weight:700;font-size:13px;letter-spacing:.03em;width:100%}
+      button.dl-cta{cursor:pointer;font-family:inherit}
+      .dl-card{text-align:left}
+    </style>
+    <div class="dl-head"><div class="dl-line"></div><span>One Akansha · your device</span><div class="dl-line r"></div></div>
+    <div class="plat-tabs" role="tablist">
+      <button class="ptab" data-plat="win" role="tab">Windows</button>
+      <button class="ptab" data-plat="mac" role="tab">macOS</button>
+      <button class="ptab" data-plat="linux" role="tab">Linux</button>
+      <button class="ptab" data-plat="android" role="tab">Android</button>
+      <button class="ptab" data-plat="ios" role="tab">iOS</button>
+    </div>
+
+    <div class="plat-panel" data-plat="win">
       <a class="dl-card win" id="winSetup" href="/downloads/Akansha-Setup.exe" download>
         <div class="dl-top">
           <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="1.5"><path d="M3 5.5 10.5 4.4v7.1H3zM12 4.2 21 3v8.5h-9zM3 12.5h7.5v7.1L3 18.5zM12 12.5h9V21l-9-1.2z"/></svg></div>
@@ -413,23 +433,65 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
         </div>
         <h3>Windows App</h3>
         <p>One-click Windows installer. Installs Akansha, creates shortcuts, and launches the desktop assistant. No Node.js, npm, Git, or developer setup required.</p>
-        <div class="dl-cta" style="margin:10px 0 2px;padding:9px 12px;border-radius:10px;background:linear-gradient(90deg,rgba(0,240,255,.14),rgba(168,85,247,.14));border:1px solid rgba(0,240,255,.5);color:#8fe9ff;text-align:center;font-weight:700;font-size:12.5px;letter-spacing:.03em">DOWNLOAD FOR WINDOWS</div>
+        <div class="dl-cta">DOWNLOAD FOR WINDOWS</div>
         <div class="dl-meta"><span class="pulse-dot"></span><em id="winVer">v3.0.0</em><span>·</span><span>Windows Installer (.exe)</span></div>
       </a>
+    </div>
 
-      <a class="dl-card and" href="/" id="androidInstall">
+    <div class="plat-panel" data-plat="mac" hidden>
+      <a class="dl-card mac" href="/downloads/Akansha-macOS-Launcher.command" download>
         <div class="dl-top">
-          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.5"><path d="M5 11h14v6.5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2zM5 11a7 7 0 0 1 14 0M8.5 19.5 7.5 22M15.5 19.5l1 2.5M9 8.2 7.5 5.8M15 8.2l1.5-2.4"/></svg></div>
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.7-3.9zM14.4 5.6c.7-.8 1.1-2 1-3.1-1 .1-2.3.7-3 1.5-.7.7-1.2 1.9-1 3 1.1.1 2.3-.6 3-1.4z"/></svg></div>
           <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
         </div>
-        <h3>Android / iOS</h3>
-        <p>Install as a native app. Gets its own icon, full-screen window, offline shell and instant launch.</p>
-        <div class="dl-meta"><span class="pulse-dot"></span><em>Install Now</em><span>·</span><span>Progressive App</span></div>
+        <h3>macOS</h3>
+        <p>A signed production <span class="mono">.dmg</span> is not published yet. This official launcher builds and runs Akansha from source. <strong>Requires Node.js + Git.</strong></p>
+        <div class="dl-cta">DOWNLOAD FOR MAC</div>
+        <div class="dl-meta"><span>Source build</span><span>·</span><span>Requires Node + Git</span></div>
       </a>
+    </div>
 
+    <div class="plat-panel" data-plat="linux" hidden>
+      <a class="dl-card lnx" href="/downloads/Akansha-Linux-Launcher.sh" download>
+        <div class="dl-top">
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M4 19h16M6 19V9m4 10V9m4 10V9m4 10V9M12 3 4 9h16z"/></svg></div>
+          <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
+        </div>
+        <h3>Linux</h3>
+        <p>Native <span class="mono">.AppImage / .deb</span> packages are in development. This official launcher builds and runs Akansha from source. <strong>Requires Node.js + Git.</strong></p>
+        <div class="dl-cta">DOWNLOAD FOR LINUX</div>
+        <div class="dl-meta"><span>Source build</span><span>·</span><span>Requires Node + Git</span></div>
+      </a>
+    </div>
+
+    <div class="plat-panel" data-plat="android" hidden>
+      <div class="dl-card and">
+        <div class="dl-top">
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.5"><path d="M5 11h14v6.5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2zM5 11a7 7 0 0 1 14 0M8.5 19.5 7.5 22M15.5 19.5l1 2.5M9 8.2 7.5 5.8M15 8.2l1.5-2.4"/></svg></div>
+        </div>
+        <h3>Android</h3>
+        <p>Install Akansha as a native app from your browser (Progressive Web App): open in Chrome → menu → <strong>“Install app”</strong>. Gets its own icon, full-screen window and offline shell. Play Store listing is pending.</p>
+        <button class="dl-cta pwa-install" type="button">GET AKANSHA FOR ANDROID</button>
+        <div class="dl-meta"><span>Progressive Web App · Play Store pending</span></div>
       </div>
-      <div class="dl-head" style="margin-top:28px"><div class="dl-line"></div><span>Developer / Source</span><div class="dl-line r"></div></div>
-      <div class="dl-grid">
+    </div>
+
+    <div class="plat-panel" data-plat="ios" hidden>
+      <div class="dl-card and">
+        <div class="dl-top">
+          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.5"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></div>
+        </div>
+        <h3>iOS</h3>
+        <p>Add Akansha to your Home Screen (Progressive Web App): open in Safari → Share → <strong>“Add to Home Screen”</strong>. App Store distribution is pending.</p>
+        <div class="dl-cta">ADD TO HOME SCREEN</div>
+        <div class="dl-meta"><span>Progressive Web App · App Store pending</span></div>
+      </div>
+    </div>
+
+    <div class="plat-available">Available for Windows · macOS · Linux · Android · iOS</div>
+
+    <div class="dl-head" style="margin-top:26px"><div class="dl-line"></div><span>Developer / Source</span><div class="dl-line r"></div></div>
+    <div class="dl-grid">
       <a class="dl-card win" id="winPortable" href="/downloads/Akansha-Portable.exe" download>
         <div class="dl-top">
           <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
@@ -448,27 +510,32 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
         <p>PowerShell bootstrap that clones the source, runs <span class="mono">npm install</span> / <span class="mono">build</span> and starts the dev server. <strong>Requires Node.js + Git.</strong> For developers only — not the packaged desktop app.</p>
         <div class="dl-meta"><span>Developer</span><span>·</span><span>Requires Node + Git</span></div>
       </a>
-
-      <a class="dl-card mac" href="/downloads/Akansha-macOS-Launcher.command" download>
-        <div class="dl-top">
-          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.7-3.9zM14.4 5.6c.7-.8 1.1-2 1-3.1-1 .1-2.3.7-3 1.5-.7.7-1.2 1.9-1 3 1.1.1 2.3-.6 3-1.4z"/></svg></div>
-          <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
-        </div>
-        <h3>Developer / Source Mode (macOS)</h3>
-        <p>Shell bootstrap that installs, builds and launches from source. <strong>Requires Node.js + Git.</strong></p>
-        <div class="dl-meta"><span>Developer</span><span>·</span><span>Requires Node + Git</span></div>
-      </a>
-
-      <a class="dl-card lnx" href="/downloads/Akansha-Linux-Launcher.sh" download>
-        <div class="dl-top">
-          <div class="dl-icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,255,.55)" stroke-width="1.5"><path d="M4 19h16M6 19V9m4 10V9m4 10V9m4 10V9M12 3 4 9h16z"/></svg></div>
-          <svg class="dl-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M17 7H9m8 0v8"/></svg>
-        </div>
-        <h3>Developer / Source Mode (Linux)</h3>
-        <p>Shell bootstrap for Ubuntu, Fedora and Arch. <strong>Requires Node.js + Git.</strong></p>
-        <div class="dl-meta"><span>Developer</span><span>·</span><span>Requires Node + Git</span></div>
-      </a>
     </div>
+    <script>
+      (function(){
+        var tabs=[].slice.call(document.querySelectorAll('.ptab'));
+        var panels={}; [].slice.call(document.querySelectorAll('.plat-panel')).forEach(function(p){panels[p.dataset.plat]=p;});
+        function show(plat){
+          tabs.forEach(function(t){t.classList.toggle('active',t.dataset.plat===plat);});
+          Object.keys(panels).forEach(function(k){panels[k].hidden=(k!==plat);});
+        }
+        tabs.forEach(function(t){t.addEventListener('click',function(){show(t.dataset.plat);});});
+        var ua=navigator.userAgent||'', plat='win';
+        if(/Android/i.test(ua)) plat='android';
+        else if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)) plat='ios';
+        else if(/Mac/i.test(ua)||navigator.platform.indexOf('Mac')>-1) plat='mac';
+        else if(/Linux|X11/i.test(ua)||navigator.platform.indexOf('Linux')>-1) plat='linux';
+        else if(/Win/i.test(ua)) plat='win';
+        show(plat);
+        // PWA install (Android) — reuse the page's install handler.
+        [].slice.call(document.querySelectorAll('.pwa-install')).forEach(function(b){
+          b.addEventListener('click',function(){
+            if(typeof window.__akanshaInstall==='function'){ window.__akanshaInstall(); }
+            else { alert('To install: open in Chrome → menu (⋮) → “Install app”.'); }
+          });
+        });
+      })();
+    </script>
 
     <div class="install-strip">
       <p><strong>Install as a desktop / mobile app</strong> — works on Windows, macOS, Linux, Android &amp; iOS</p>
@@ -796,9 +863,7 @@ document.querySelectorAll('[data-count]').forEach(el=>co.observe(el));
   }
 
   btn.addEventListener('click', doInstall);
-  document.getElementById('androidInstall').addEventListener('click',(e)=>{
-    e.preventDefault(); doInstall();
-  });
+  window.__akanshaInstall = doInstall; // used by the Android platform-tab button
   if(matchMedia('(display-mode: standalone)').matches){ btn.disabled=true; btn.textContent='Installed ✓'; }
 })();
 

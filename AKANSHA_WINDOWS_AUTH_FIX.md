@@ -60,8 +60,31 @@ future work.** Do not treat this as a permanent redefinition of the authoritativ
 - `asar:false` is required here (Next `next start` reads loose files) — electron-builder
   warns; acceptable for this architecture.
 
+## Cross-platform distribution (this pass)
+Landing (`public/landing.html`) redesigned to ONE product with a platform tab per
+OS + auto-detect, and a separate Developer / Source section. No dead links: every
+action points to a real file or the real PWA install.
+- **Windows** — `DOWNLOAD FOR WINDOWS` → `/downloads/Akansha-Setup.exe`. VERIFIED:
+  NSIS install → launch → **no auth modal** → UI → `/api/health` 200 → unauthed
+  `/api/akansha/command` 401. Served exe: real PE (MZ), 145,187,772 B, HEAD 200 octet-stream.
+- **macOS** — `DOWNLOAD FOR MAC` → `/downloads/Akansha-macOS-Launcher.command` (source
+  bootstrap, requires Node+Git). Production signed `.dmg`: **NOT BUILT** here → **BLOCKED**.
+- **Linux** — `DOWNLOAD FOR LINUX` → `/downloads/Akansha-Linux-Launcher.sh` (source).
+  Native `.AppImage/.deb`: **NOT BUILT** here → **BLOCKED**.
+- **Android** — `GET AKANSHA FOR ANDROID` → real **PWA install** (manifest.json + sw.js +
+  beforeinstallprompt). Signed APK / Play Store: **NOT IMPLEMENTED**.
+- **iOS** — `ADD TO HOME SCREEN` → real **PWA**. App Store/TestFlight: **NOT IMPLEMENTED**.
+- Landing render VERIFIED in packaged Chromium (tabs [Windows,macOS,Linux,Android,iOS],
+  auto-detect Windows, DOWNLOAD FOR WINDOWS). The installer intentionally excludes
+  `public/downloads/*.exe` (small installer), so the page's artifact-guard shows
+  "not built in this deployment" inside the desktop app; on the web host that serves
+  `public/downloads/` the download works (HEAD 200 / 145 MB verified).
+
 ## State
-- Branch: master · HEAD before this commit: affd222 ("feat: real web + MCP integration").
-- NEXT: (a) obtain a code-signing cert and enable signing; (b) test install+launch on a
-  clean Windows machine; (c) confirm the packaged NSIS installer (not just win-unpacked)
-  installs and auto-unlocks.
+- Branch: master · HEAD: 3cf472e (auth fix) + this distribution commit.
+- Git remote: **NONE / BLOCKED** — no repository URL exists in project evidence
+  (`package.json.repository` null, no GitHub URL); did NOT guess. Cannot push.
+- NEXT: (a) add the correct GitHub remote (needs the real repo URL from you) + push;
+  (b) code-sign Windows + notarize macOS; (c) build macOS `.dmg` (Mac) + Linux
+  `.AppImage/.deb` (Linux); (d) publish signed Android APK / iOS via stores;
+  (e) rebuild installer to embed the redesigned landing.
