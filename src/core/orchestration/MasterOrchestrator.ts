@@ -8,6 +8,7 @@ import { windowsComputerUseProvider } from '../execution/WindowsComputerUseProvi
 import { executionPlanner } from '../execution/ExecutionPlanner';
 import { executionEngine } from '../execution/ExecutionEngine';
 import { permissionEngine } from '../execution/PermissionEngine';
+import { webCapability } from '../web/WebCapability';
 
 export interface MissionState {
   id: string;
@@ -311,6 +312,63 @@ export class MasterOrchestrator {
 
     // ── ANSWERABLE INTENTS: actually generate with a real model ───────
     if (this.isAnswerableIntent(intent)) {
+      // Research missions: REAL web search + source retrieval, then synthesis.
+      if (intent === 'research') {
+        mission.observations.push('Web research: searching and retrieving real sources.');
+        try {
+          const research = await webCapability.research(mission.goal, { maxSources: 3 });
+          mission.context.sources = research.sources;
+          mission.context.research = { verified: research.verified, sourceCount: research.sources.filter((s) => s.retrieved).length };
+
+          let reply = research.answer;
+          let synthesizedByModel = false;
+          // Best-effort model synthesis over the REAL retrieved content.
+          try {
+            const contextBlock = research.sources
+              .filter((s) => s.retrieved)
+              .map((s) => `SOURCE: ${s.title} (${s.url})\n${(s.content || s.snippet || '').slice(0, 1500)}`)
+              .join('\n\n');
+            const gen = await modelRouter.generateWithFallback(
+              {
+                messages: [
+                  { role: 'system', content: 'You are Akansha. Answer ONLY using the provided retrieved sources. Cite the source URLs. If the sources do not answer the question, say so. Address the user as "Boss".' },
+                  { role: 'user', content: `Question: ${mission.goal}\n\nRetrieved sources:\n${contextBlock}` },
+                ],
+                maxTokens: 800,
+              },
+              'research',
+              ['reasoning']
+            );
+            if (gen.response.content && gen.response.content.trim()) {
+              reply = gen.response.content.trim();
+              synthesizedByModel = true;
+              mission.context.model = { provider: gen.response.provider, modelId: gen.response.model };
+            }
+          } catch {
+            /* no model — keep the honest extractive, source-attributed answer */
+          }
+
+          if (research.verified) {
+            mission.status = 'COMPLETED';
+            mission.context.reply = reply;
+            mission.observations.push(`Researched ${research.sources.filter((s) => s.retrieved).length} real source(s).`);
+            this.emit({ type: 'MISSION_COMPLETED', missionId, payload: { verified: true, sources: research.sources.length, synthesizedByModel } });
+          } else {
+            mission.status = 'FAILED';
+            mission.context.failureClass = 'NETWORK_ERROR';
+            mission.context.reply = 'I searched but could not actually retrieve any source, so I am not claiming a researched answer.';
+            this.emit({ type: 'MISSION_FAILED', missionId, payload: { error: 'no_sources_retrieved' } });
+          }
+        } catch (e: any) {
+          mission.status = 'FAILED';
+          mission.context.failureClass = 'PROVIDER_ERROR';
+          mission.context.reply = `Web research failed: ${e?.message || 'search provider unavailable'}. Configure a search provider (Brave/Tavily) or check network.`;
+          this.emit({ type: 'MISSION_FAILED', missionId, payload: { error: e?.message } });
+        }
+        mission.updatedAt = Date.now();
+        return mission;
+      }
+
       mission.observations.push('Routing to the best available model for generation.');
       const requiredCapabilities: string[] =
         intent === 'coding' ? ['coding'] : intent === 'research' ? ['reasoning'] : [];

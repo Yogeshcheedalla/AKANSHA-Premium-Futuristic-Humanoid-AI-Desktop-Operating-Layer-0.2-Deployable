@@ -143,22 +143,52 @@ export async function POST(request: Request) {
           };
         }
 
-        // ── TIER 1: conversation — greeting, no tools/agents/MCP ──────
+        // ── TIER 1: conversation — genuine model reply when a provider exists,
+        //    fast and tool-free (no agents/MCP/execution). Canned fallback otherwise.
         if (intent.intent === 'conversation') {
+          let reply = 'Hello, Boss. Akansha is online and listening.';
+          let usedModel = false;
+          let sel: { providerId: string; modelId: string } | null = null;
+          try {
+            const gen = await modelRouter.generateWithFallback(
+              {
+                messages: [
+                  {
+                    role: 'system',
+                    content:
+                      'You are Akansha, a warm, concise personal assistant. Reply to short greetings/questions in one or two friendly sentences. Address the user as "Boss". Never claim to have performed actions.',
+                  },
+                  { role: 'user', content: text },
+                ],
+                maxTokens: 120,
+                temperature: 0.6,
+              },
+              'conversation'
+            );
+            if (gen.response.content && gen.response.content.trim()) {
+              reply = gen.response.content.trim();
+              usedModel = true;
+              sel = { providerId: gen.response.provider, modelId: gen.response.model };
+            }
+          } catch {
+            /* no provider — keep the honest canned greeting */
+          }
           return {
             ok: true,
             requestId,
             intent: intent.intent,
             tier,
             path: 'conversation',
-            usedModel: false,
+            usedModel,
             status: 'COMPLETED',
-            response: 'Hello, Boss. Akansha is online and listening.',
+            response: reply,
             trace: {
               kind: 'conversation',
-              candidates: [{ providerId: 'conversation-engine', modelId: 'greeting', score: 100, reasons: ['no-agent', 'no-tools'] }],
-              selected: { providerId: 'conversation-engine', modelId: 'greeting' },
-              reasons: ['Classified as conversation — no Windows action, no agent, no tool execution.'],
+              candidates: sel ? [{ providerId: sel.providerId, modelId: sel.modelId, score: 100, reasons: ['fast-chat'] }] : [],
+              selected: sel,
+              reasons: usedModel
+                ? ['Conversation answered by the model — no Windows action, no agent, no tool execution.']
+                : ['No provider reachable — returned an honest static greeting.'],
             },
             latencyMs: Date.now() - started,
           };
@@ -276,6 +306,7 @@ export async function POST(request: Request) {
           status: missionResult.status,
           failureClass: missionResult.context?.failureClass || null,
           evidence: missionResult.context?.evidence || null,
+          sources: missionResult.context?.sources || null,
           model: missionResult.context?.model || (decision ? { provider: decision.provider, modelId: decision.modelId } : null),
           matchedSkill: topSkill ? { id: topSkill.skill.id, name: topSkill.skill.name, score: topSkill.score } : null,
           memory: { decision: scored.decision, score: scored.score, stored: memoryStored, retrieved: relevant.length, reasons: scored.reasons },
