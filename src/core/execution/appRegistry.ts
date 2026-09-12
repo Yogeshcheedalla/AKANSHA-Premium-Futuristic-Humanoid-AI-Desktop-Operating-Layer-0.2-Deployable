@@ -30,6 +30,8 @@ export const APP_REGISTRY: AppSpec[] = [
   { aliases: ['calculator', 'calc'], exe: '%WINDIR%\\System32\\win32calc.exe', titleHint: 'calculator', processName: 'win32calc', launch: 'win32' },
   { aliases: ['wordpad'], exe: '%WINDIR%\\System32\\wordpad.exe', titleHint: 'wordpad', processName: 'wordpad', launch: 'win32' },
   { aliases: ['explorer', 'file explorer', 'this pc'], exe: '%WINDIR%\\explorer.exe', titleHint: 'explorer', processName: 'explorer', launch: 'win32' },
+  { aliases: ['edge', 'microsoft edge', 'browser'], exe: '%PROGRAMFILESX86%\\Microsoft\\Edge\\Application\\msedge.exe', titleHint: 'Microsoft Edge', processName: 'msedge', launch: 'win32' },
+  { aliases: ['chrome', 'google chrome'], exe: '%PROGRAMFILES%\\Google\\Chrome\\Application\\chrome.exe', titleHint: 'Google Chrome', processName: 'chrome', launch: 'win32' },
 ];
 
 const norm = (s: string) => s.toLowerCase().trim();
@@ -47,5 +49,7 @@ export function expandEnv(p: string): string {
   return p
     .replace(/%WINDIR%/gi, process.env.SystemRoot || process.env.windir || 'C:\\Windows')
     .replace(/%USERPROFILE%/gi, process.env.USERPROFILE || '')
-    .replace(/%APPDATA%/gi, process.env.APPDATA || '');
+    .replace(/%APPDATA%/gi, process.env.APPDATA || '')
+    .replace(/%PROGRAMFILESX86%/gi, process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)')
+    .replace(/%PROGRAMFILES%/gi, process.env.ProgramFiles || 'C:\\Program Files');
 }

@@ -40,9 +40,14 @@ export class ExecutionPlanner {
       };
     }
 
-    // "open <app>"
+    // "open <app>" — but ONLY a single action. If there is an additional clause
+    // ("and search…", "then click…") that this planner cannot express as steps,
+    // return null so the orchestrator fails honestly instead of falsely completing.
     const open = g.match(/^(?:open|launch|start|run)\s+(.+)$/i);
     if (open && app) {
+      const remainder = open[1] || '';
+      const hasUnhandledClause = /\b(?:and|then)\b|,/.test(remainder.replace(app.name, ''));
+      if (hasUnhandledClause) return null;
       return {
         goal,
         riskTier,

@@ -47,9 +47,22 @@ function Find-ByTitle([string]$rx) {
 }
 function Read-EditText($win) {
   if (-not $win) { return '' }
-  $edit = $win.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)))
-  if (-not $edit) { return '' }
-  try { return [string]$edit.Current.Value } catch { return '' }
+  # Notepad & many apps expose text via a Document control readable only through
+  # TextPattern; others use an Edit control with a Value. Check both, TextPattern first.
+  $candidates = @()
+  foreach ($ct in @($CT::Edit, $CT::Document)) {
+    $found = $win.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $ct)))
+    foreach ($c in $found) { $candidates += $c }
+  }
+  foreach ($c in $candidates) {
+    try {
+      $pt = $c.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+      $t = $pt.DocumentRange.GetText(-1)
+      if ($t) { return [string]$t }
+    } catch {}
+    try { $v = [string]$c.Current.Value; if ($v) { return $v } } catch {}
+  }
+  return ''
 }
 function Out($obj) { Write-Output ($obj | ConvertTo-Json -Compress -Depth 6) }
 

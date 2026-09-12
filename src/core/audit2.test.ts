@@ -79,6 +79,12 @@ test('planner: unknown goals yield no plan (never guesses an action)', () => {
   assert.equal(executionPlanner.plan('tell me a joke about servers', 'low', [], false), null);
 });
 
+test('planner: unhandled multi-clause goal yields no plan (no false completion)', () => {
+  // "open Chrome and search…" — the search step can't be expressed, so the
+  // planner must return null rather than launch-only and falsely report COMPLETED.
+  assert.equal(executionPlanner.plan('open Chrome and search for AI news', 'low', [], false), null);
+});
+
 test('verifier: COMPLETED requires the expected window to actually be observed', () => {
   const plan = executionPlanner.plan('open notepad', 'low', [], false)!;
   const step = plan.steps[0];
