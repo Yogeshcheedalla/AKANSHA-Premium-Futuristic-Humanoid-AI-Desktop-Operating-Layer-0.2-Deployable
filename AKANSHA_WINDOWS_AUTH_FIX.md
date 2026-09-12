@@ -81,10 +81,15 @@ action points to a real file or the real PWA install.
   `public/downloads/` the download works (HEAD 200 / 145 MB verified).
 
 ## State
-- Branch: master · HEAD: 3cf472e (auth fix) + this distribution commit.
-- Git remote: **NONE / BLOCKED** — no repository URL exists in project evidence
-  (`package.json.repository` null, no GitHub URL); did NOT guess. Cannot push.
-- NEXT: (a) add the correct GitHub remote (needs the real repo URL from you) + push;
-  (b) code-sign Windows + notarize macOS; (c) build macOS `.dmg` (Mac) + Linux
-  `.AppImage/.deb` (Linux); (d) publish signed Android APK / iOS via stores;
-  (e) rebuild installer to embed the redesigned landing.
+- Branch: master · HEAD: 6830785 (distribution) on top of 3cf472e (Windows auth fix).
+- **GIT REMOTE: NONE — commits are LOCAL ONLY.** Do NOT add the Desktop/Akansha-source
+  GitHub URL (`...AKANSHA-Premium-Futuristic-Humanoid-AI-Desktop-Operating-Layer-0.1`)
+  as this project's origin, do NOT push here, do NOT merge the two codebases, do NOT
+  create a branch for advanced-humanoid in the Desktop repo, do NOT force-push.
+- **Desktop/Akansha-source has its own SEPARATE GitHub repository. The two repositories
+  must remain separate and must never be mixed.** (Do not re-ask for the Desktop URL.)
+- NEXT (when a remote for THIS project is explicitly provided by the user): add it as
+  origin and push master. Until then, work stays local.
+- Other open items: code-sign Windows + notarize macOS; build macOS `.dmg` (needs a Mac)
+  + Linux `.AppImage/.deb` (needs Linux); publish signed Android APK / iOS via stores;
+  rebuild the installer to embed the redesigned landing.
