@@ -22,6 +22,26 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<string | null>(null);
   const [install, setInstall] = useState<Record<string, InstallResult | 'busy'>>({});
+  const [connecting, setConnecting] = useState(false);
+  const [connectMsg, setConnectMsg] = useState<string | null>(null);
+
+  // Continue with OpenRouter: kick off the secure PKCE flow server-side, then hand
+  // off to OpenRouter's OWN authorization/signup page in a new tab. Akansha never
+  // sees or stores the OpenRouter password and never creates the account itself.
+  const connectOpenRouter = useCallback(async () => {
+    setConnecting(true); setConnectMsg(null);
+    try {
+      const res = await fetch('/api/ai/online/connect', { method: 'POST', credentials: 'same-origin' });
+      const d = await res.json();
+      if (!res.ok || d.configured === false) { setConnectMsg('OPENROUTER CONNECTION NOT CONFIGURED'); return; }
+      window.open(d.authorizeUrl, '_blank', 'noopener,noreferrer');
+      setConnectMsg('Complete sign-in / sign-up on OpenRouter, then return here.');
+    } catch {
+      setConnectMsg('OPENROUTER CONNECTION UNAVAILABLE');
+    } finally {
+      setConnecting(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -100,14 +120,27 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       {/* Online status */}
-      <GlassSurface className="p-4 rounded-2xl mb-4 flex items-center justify-between">
-        <div>
-          <div className="text-sm text-white/80">Online AI — OpenRouter</div>
-          <div className="text-[11px] text-white/40 mt-0.5">{vm.readiness.online}</div>
+      <GlassSurface className="p-4 rounded-2xl mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm text-white/80">Online AI — OpenRouter</div>
+            <div className="text-[11px] text-white/40 mt-0.5">{vm.readiness.online}</div>
+          </div>
+          <span className={`shrink-0 text-xs px-3 py-1 rounded-full ${vm.online.connected && vm.online.verified ? 'bg-emerald-400/10 text-emerald-300' : 'bg-white/5 text-white/40'}`}>
+            {vm.online.connected && vm.online.verified ? `Connected${vm.online.label ? ` · ${vm.online.label}` : ''}` : 'Not connected'}
+          </span>
         </div>
-        <span className={`text-xs px-3 py-1 rounded-full ${vm.online.connected && vm.online.verified ? 'bg-emerald-400/10 text-emerald-300' : 'bg-white/5 text-white/40'}`}>
-          {vm.online.connected && vm.online.verified ? `Connected${vm.online.label ? ` · ${vm.online.label}` : ''}` : 'Not connected'}
-        </span>
+        {vm.online.configured ? (
+          <button onClick={connectOpenRouter} disabled={connecting}
+            className="mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-40 transition-colors">
+            {connecting ? <><Loader2 size={13} className="animate-spin" /> Redirecting…</>
+              : <><Globe size={13} /> {vm.online.connected && vm.online.verified ? 'Reconnect OpenRouter' : 'Continue with OpenRouter'}</>}
+          </button>
+        ) : (
+          <div className="mt-3 text-[11px] text-amber-300/80">OPENROUTER CONNECTION NOT CONFIGURED — add a registered client_id to enable one-click sign-in/sign-up via OpenRouter.</div>
+        )}
+        {connectMsg && <div className="mt-2 text-[11px] text-white/50">{connectMsg}</div>}
+        {vm.online.configured && <div className="mt-1.5 text-[10px] text-white/25">You sign in or create your account securely on OpenRouter — Akansha never sees your OpenRouter password.</div>}
       </GlassSurface>
 
       {/* Catalog / Model cards — consumed from the signed catalog, never hard-coded */}

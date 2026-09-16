@@ -23,6 +23,19 @@ export async function POST(request: Request) {
     /* tolerate empty body */
   }
   const passphrase: string = (body?.passphrase || '').toString();
+
+  // Accountless guest session — no Akansha signup needed for basic AI use.
+  if (body?.guest === true) {
+    const guest = auth.issueGuest();
+    if (!guest) {
+      return NextResponse.json({ ok: false, error: 'guests_disabled', message: 'A local Akansha session is required.' }, { status: 403 });
+    }
+    const gsecure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    const gres = NextResponse.json({ ok: true, role: 'guest', expiresAt: guest.principal.exp, ttlMs: SESSION_TTL_MS });
+    gres.headers.append('Set-Cookie', `akansha_session=${encodeURIComponent(guest.token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${gsecure}`);
+    return gres;
+  }
+
   const result = auth.issue(passphrase || null);
   if (!result) {
     return NextResponse.json({ ok: false, error: 'invalid_passphrase' }, { status: 401 });

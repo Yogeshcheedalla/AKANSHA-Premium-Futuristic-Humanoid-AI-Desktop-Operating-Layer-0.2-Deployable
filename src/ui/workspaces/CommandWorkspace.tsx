@@ -53,6 +53,24 @@ export const CommandWorkspace = () => {
     }
   };
 
+  // Accountless use: request a low-privilege guest session (chat works; execute/
+  // install/settings stay gated behind a real session). No Akansha signup required.
+  const continueAsGuest = async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ guest: true }),
+      });
+      const data = await res.json();
+      if (data?.ok) { setNeedsAuth(false); return true; }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (!audioEngine) return;
     const offFinal = audioEngine.onFinalUtterance((u) => { setPartial(''); sendRef.current(u.transcript, u.utteranceId); });
@@ -133,22 +151,30 @@ export const CommandWorkspace = () => {
       {needsAuth && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <GlassSurface className="p-6 rounded-2xl max-w-sm w-full mx-4">
-            <h3 className="text-sm text-white/80 mb-1">Authentication required</h3>
+            <h3 className="text-sm text-white/80 mb-1">Start using Akansha</h3>
             <p className="text-[11px] text-white/40 mb-4">
-              Enter the local access token (from <code className="text-cyan-200/70">.akansha-auth.json</code>) to start a session.
+              No account is required to chat. Continue as a guest, or unlock full local control with your access token.
             </p>
+            <button
+              onClick={continueAsGuest}
+              className="w-full py-2 rounded-lg bg-gradient-to-br from-cyan-500/25 to-purple-500/25 text-cyan-100 text-sm font-medium hover:scale-[1.01] transition-transform">
+              Continue without an account
+            </button>
+            <div className="my-3 flex items-center gap-3 text-[10px] text-white/25">
+              <span className="flex-1 h-px bg-white/10" /> optional: full access <span className="flex-1 h-px bg-white/10" />
+            </div>
             <input
               type="password"
               value={loginToken}
               onChange={(e) => setLoginToken(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && login(loginToken).then((ok) => ok && setLoginToken(''))}
-              placeholder="access token"
+              placeholder="access token (from .akansha-auth.json)"
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-cyan-400/40 mb-3"
             />
             <button
               onClick={async () => { const ok = await login(loginToken); if (ok) setLoginToken(''); }}
-              className="w-full py-2 rounded-lg bg-gradient-to-br from-cyan-500/25 to-purple-500/25 text-cyan-200 text-sm hover:scale-[1.01] transition-transform">
-              Unlock Akansha
+              className="w-full py-2 rounded-lg bg-white/5 border border-white/10 text-white/70 text-sm hover:bg-white/10 transition-colors">
+              Unlock with access token
             </button>
           </GlassSurface>
         </div>

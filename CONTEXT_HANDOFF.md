@@ -157,6 +157,27 @@ cross-device sync/hosted identity, update delivery pipeline, GitHub Actions CI/C
 BLOCKED unchanged: live local inference (no runtime), live OpenRouter OAuth (no
 registered client_id), real cloud chat (no key), mic/speaker hardware.
 
+## ACCOUNTLESS ACCESS + DIRECT OPENROUTER FLOW (2026-09-16, this pass)
+Removed the mandatory Akansha-account gate; basic AI use needs no signup. Security
+is preserved (one auth engine, no weakening).
+- `core/auth/tokens.ts` Role += `guest`. `core/auth/guard.ts`: `guest` satisfies
+  'authenticated' (chat) but is **rejected (403)** for 'sensitive'/'admin' (execute/
+  install/settings) — guests are strictly weaker than 'user'. `session.issueGuest()`
+  mints an accountless session (toggle: `AKANSHA_GUESTS_DISABLED=true`).
+- `POST /api/auth/session {guest:true}` sets the HttpOnly session cookie → chat works
+  accountless. `CommandWorkspace` offers "Continue without an account" (primary) with
+  the access-token path as optional "full local control".
+- OpenRouter unchanged/secure: Model Center "Continue with OpenRouter" POSTs
+  /api/ai/online/connect and opens OpenRouter's OWN authorize/signup page (new tab);
+  Akansha never handles the OpenRouter password and never creates an account. PKCE +
+  CSRF state + code exchange + authenticated GET /key + opaque vault retained.
+- Failure labels surfaced in UI: OPENROUTER CONNECTION NOT CONFIGURED / UNAVAILABLE /
+  reconnect path. Offline & Both stay usable accountless; no silent cloud fallback.
+- Verified: 141/141 tests (was 134; +7 guestAuth.test), tsc 0, next build 0.
+- LIVE OAuth: still BLOCKED — needs a registered client_id (never invented).
+- Vercel: push to main auto-redeploys (git-connected); verify on
+  https://akansha-gamma.vercel.app after push.
+
 ## FILES CHANGED (this recovery)
 Tracked edits: src/core/models/ModelProvider.ts, src/core/providers/ProviderManager.ts,
 src/integrations/models/ProviderFactory.ts, src/ui/workspaces/CommandWorkspace.tsx.

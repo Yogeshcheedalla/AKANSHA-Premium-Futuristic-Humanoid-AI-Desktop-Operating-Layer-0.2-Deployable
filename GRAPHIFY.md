@@ -46,13 +46,13 @@ a second of any of these. External models/providers are adapters, never the brai
 | Risk + Permission gate | core/security/RiskEngine, core/execution/PermissionEngine | EXISTS | audit.test |
 | ModelRouter (cloud+local policy, fallback) | core/models/ModelRouter | EXISTS | audit.test |
 | Providers (Ollama/OpenAI/Gemini/compat) | integrations/models/ProviderFactory | EXISTS | ProviderManager |
-| **OpenRouter + PKCE + verified key check** | integrations/openrouter/OpenRouter + OpenRouterProvider | IMPLEMENTED (this recovery) | OpenRouter.test 10/10; verifyKey hits /key not /models |
+| **OpenRouter + PKCE + verified key check** | integrations/openrouter/OpenRouter + OpenRouterProvider | IMPLEMENTED — "Continue with OpenRouter" auto-redirects to OpenRouter's OWN sign-in/sign-up (Akansha never handles the password); PKCE+CSRF+/key verify+opaque vault | OpenRouter.test; verifyKey hits /key not /models. LIVE OAuth still needs a registered client_id (never invented) |
 | **Signed manifest + GGUF + SHA integrity** | core/models/local/ModelIntegrity | IMPLEMENTED (offline) | ModelIntegrity.test 16/16 |
 | **Hardware probe + Offline/Cloud AI mode** | core/runtime/HardwareProbe, core/models/local/LocalModelSelector, core/models/AiMode | IMPLEMENTED | LocalModelSelector.test 7/7, AiMode.test |
 | **Verified local inference provider** | core/models/local/LocalGgufProvider | IMPLEMENTED (structure) | LocalGgufProvider.test 6/6; LIVE inference BLOCKED (no llama.cpp/Ollama runtime detected in this env) |
 | Voice pipeline (mic/VAD/ownership/dedup/barge-in/partial gate) | src/ui/voice/AudioEngine, core/voice/VoicePipeline | EXISTS | voice tests in npm test |
 | Voice idempotency (utteranceId → requestId) | CommandWorkspace + ExecutionLedger | FIXED (this recovery) | ExecutionLedger.test 3/3 |
-| Auth/security (HMAC session, AES-GCM vault, DPAPI desktop, authorize()) | core/auth, core/security/CredentialVault, electron/main.js | EXISTS | audit.test; no plaintext on disk |
+| Auth/security (HMAC session, AES-GCM vault, DPAPI desktop, authorize()) | core/auth, core/security/CredentialVault, electron/main.js | EXISTS — **ACCOUNTLESS**: low-priv `guest` role allows chat ('authenticated') but is blocked from `sensitive`/`admin`; one auth engine, no weakening | guestAuth.test 7 (guest chat ok, sensitive/admin 403, user/admin intact, AKANSHA_GUESTS_DISABLED) |
 | Packaging (Electron spawns Next, NSIS/portable) | electron/main.js, electron-builder.yml | EXISTS | prior builds |
 
 ## D. VERIFICATION VOCABULARY (use exactly)

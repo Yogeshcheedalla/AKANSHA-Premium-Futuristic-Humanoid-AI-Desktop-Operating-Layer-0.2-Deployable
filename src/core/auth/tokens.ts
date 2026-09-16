@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-export type Role = 'user' | 'admin';
+export type Role = 'guest' | 'user' | 'admin';
 
 export interface Principal {
   sub: string;

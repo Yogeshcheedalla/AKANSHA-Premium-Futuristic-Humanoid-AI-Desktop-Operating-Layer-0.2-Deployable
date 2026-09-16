@@ -5,7 +5,7 @@ import { eventBus } from '../events/EventBus';
 
 export type AccessLevel = 'public' | 'authenticated' | 'sensitive' | 'admin';
 
-const ROLE_RANK: Record<Role, number> = { user: 1, admin: 2 };
+const ROLE_RANK: Record<Role, number> = { guest: 1, user: 1, admin: 2 };
 const LEVEL_RANK: Record<AccessLevel, number> = { public: 0, authenticated: 1, sensitive: 1, admin: 2 };
 
 export type GuardResult = { ok: true; principal: Principal | null } | { ok: false; response: NextResponse };
@@ -37,6 +37,15 @@ export function authorize(req: Request, level: AccessLevel): GuardResult {
 
   const need = LEVEL_RANK[level];
   const have = ROLE_RANK[principal.role];
+  // Accountless guests may use chat ('authenticated') but NOT sensitive/execute/
+  // admin operations — those still require a real (user/admin) Akansha session.
+  if (principal.role === 'guest' && (level === 'sensitive' || level === 'admin')) {
+    eventBus.emit('auth.denied', 'Auth', { level, reason: 'guest_not_allowed', role: 'guest' });
+    return {
+      ok: false,
+      response: NextResponse.json({ ok: false, error: 'account_required', level }, { status: 403 }),
+    };
+  }
   // sensitive requires at least a user principal (rank >= 1); admin requires rank 2.
   if (have < need) {
     eventBus.emit('auth.denied', 'Auth', { level, reason: 'insufficient_role', role: principal.role });

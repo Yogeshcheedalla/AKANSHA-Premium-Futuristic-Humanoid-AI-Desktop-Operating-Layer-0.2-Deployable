@@ -79,6 +79,30 @@ class AuthManager {
     return { token: signToken(principal), principal };
   }
 
+  /**
+   * Mint a low-privilege, ACCOUNTLESS guest session so basic AI use needs no
+   * Akansha signup. A guest satisfies the 'authenticated' level (chat) but the
+   * guard rejects it for 'sensitive'/'admin' (execute / install / settings), so
+   * this does NOT weaken security — it is strictly weaker than 'user'. Set
+   * AKANSHA_GUESTS_DISABLED=true to require a real session.
+   */
+  issueGuest(): { token: string; principal: Principal } | null {
+    if (process.env.AKANSHA_GUESTS_DISABLED === 'true') {
+      eventBus.emit('auth.rejected', 'Auth', { reason: 'guests disabled' });
+      return null;
+    }
+    const now = Date.now();
+    const principal: Principal = {
+      sub: 'guest',
+      role: 'guest',
+      iat: now,
+      exp: now + SESSION_TTL_MS,
+      jti: crypto.randomBytes(12).toString('hex'),
+    };
+    eventBus.emit('auth.granted', 'Auth', { jti: principal.jti, role: 'guest' });
+    return { token: signToken(principal), principal };
+  }
+
   /** Resolve the principal from a request (Authorization: Bearer or cookie). */
   authenticate(req: Request): Principal | null {
     const header = req.headers.get('authorization');
