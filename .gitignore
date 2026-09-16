@@ -167,3 +167,5 @@ release/*.log
 
 # Akansha signing private keys — NEVER commit
 .akansha-keys/
+
+.vercel
