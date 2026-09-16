@@ -17,7 +17,7 @@ import type { HardwareProfile } from '@/core/runtime/HardwareProbe';
 import { selectLocalModel, type ModelAssessment } from '@/core/models/local/LocalModelSelector';
 import type { ManifestModelEntry } from '@/core/models/local/ModelIntegrity';
 
-export type AiMode = 'auto' | 'offline' | 'cloud';
+export type AiMode = 'auto' | 'offline' | 'cloud' | 'both';
 
 export interface AiModeDecision {
   ok: boolean;
@@ -25,7 +25,7 @@ export interface AiModeDecision {
   policy: RoutingPolicy;
   reason: string;
   recommendedLocalModel: string | null;
-  fallbackUsed: boolean;      // true only when 'auto' chose cloud because offline wasn't ready
+  fallbackUsed: boolean;      // true only when 'auto'/'both' chose cloud because offline wasn't ready
   assessments: ModelAssessment[];
 }
 
@@ -56,6 +56,15 @@ export function decideAiMode(opts: {
 
   if (mode === 'cloud') {
     return { ok: true, mode: 'cloud', policy: 'CLOUD_ONLY', reason: 'cloud selected by user', recommendedLocalModel: usable, fallbackUsed: false, assessments: sel.assessments };
+  }
+
+  if (mode === 'both') {
+    // User opted into flexibility: prefer the VERIFIED local model; fall back to
+    // cloud ONLY when offline isn't ready — and say so (never a silent switch).
+    if (offlineReady) {
+      return { ok: true, mode: 'offline', policy: 'PREFERRED_LOCAL', reason: `both: verified local model available (${usable}); cloud is the explicit fallback`, recommendedLocalModel: usable, fallbackUsed: false, assessments: sel.assessments };
+    }
+    return { ok: true, mode: 'cloud', policy: 'PREFERRED_CLOUD', reason: 'both: no usable local model yet → cloud (offline can be enabled by installing a verified model)', recommendedLocalModel: null, fallbackUsed: true, assessments: sel.assessments };
   }
 
   // auto: prefer verified offline, else cloud — and say so.

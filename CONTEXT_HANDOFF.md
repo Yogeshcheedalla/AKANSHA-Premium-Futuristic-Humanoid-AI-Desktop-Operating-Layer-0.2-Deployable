@@ -55,6 +55,30 @@ LAST VERIFIED BEFORE: 39/39 npm test, clean.
   detected in this environment); a real cloud chat (no key); acoustic barge-in / mic /
   speaker (hardware). No binaries or models were downloaded or committed.
 
+## PRODUCTION ARCHITECTURE LAYER (2026-09-16, HEAD 448ecf8 → this)
+Offline, tested extensions of the SAME architecture (no 2nd orchestrator/router/TTS):
+- `src/core/catalog/ModelCatalog.ts` — rich SIGNED catalog contract (family/version/
+  quant/benchmark/measured-vs-estimated/platforms/runtime/sha/signature). UI must
+  consume this; never hard-code models.
+- `src/core/catalog/CompatibilityEngine.ts` — MODEL×HARDWARE×RUNTIME score →
+  EXCELLENT/GOOD/USABLE/SLOW/UNSUPPORTED; performance labelled Measured/Estimated/
+  Unknown, never fabricated; unsupported when runtime missing.
+- `src/core/runtime/RuntimeManager.ts` + `src/core/catalog/ModelManager.ts` —
+  runtime ≠ model; secure install pipeline; `usable` ONLY after real inference.
+- `src/core/update/ReleaseManifest.ts` — signed app/runtime/catalog release
+  verification (HTTPS+Ed25519+SHA256+platform+arch+version).
+- `src/core/identity/ConnectedServices.ts` + `src/integrations/openrouter/oauth.ts` —
+  Akansha identity SEPARATE from OpenRouter; PKCE start/parse/complete; key stored
+  only as opaque credentialRef; state-mismatch (CSRF) rejected.
+- `AiMode` now supports Offline / Online / **Both** / auto (no silent fallback).
+Tests now **97/97** (was 84); tsc clean; next build exit 0.
+
+DESIGN-ONLY (NOT implemented — see AKANSHA_PRODUCTION_DISTRIBUTION.md): first-run
+wizard UI, per-platform installers + code signing/notarization, Android/iOS,
+cross-device sync/hosted identity, update delivery pipeline, GitHub Actions CI/CD.
+BLOCKED unchanged: live local inference (no runtime), live OpenRouter OAuth (no
+registered client_id), real cloud chat (no key), mic/speaker hardware.
+
 ## FILES CHANGED (this recovery)
 Tracked edits: src/core/models/ModelProvider.ts, src/core/providers/ProviderManager.ts,
 src/integrations/models/ProviderFactory.ts, src/ui/workspaces/CommandWorkspace.tsx.
