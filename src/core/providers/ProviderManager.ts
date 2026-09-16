@@ -37,6 +37,7 @@ export class ProviderManager {
   private builtin(): ProviderConfigInput[] {
     return [
       { id: 'ollama', name: 'Ollama (Local)', type: 'ollama', baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434', enabled: true, fallbackPriority: 20 },
+      { id: 'openrouter', name: 'OpenRouter (Cloud)', type: 'openrouter', baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY, defaultModel: process.env.OPENROUTER_MODEL || 'openrouter/free', enabled: true, fallbackPriority: 30 },
       { id: 'openai', name: 'OpenAI', type: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: process.env.OPENAI_API_KEY, enabled: true, fallbackPriority: 40 },
       { id: 'gemini', name: 'Google Gemini', type: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', apiKey: process.env.GEMINI_API_KEY, enabled: true, fallbackPriority: 50 },
       {

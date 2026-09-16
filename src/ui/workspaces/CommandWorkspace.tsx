@@ -35,7 +35,7 @@ export const CommandWorkspace = () => {
   const [loginToken, setLoginToken] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('STANDBY');
   const [partial, setPartial] = useState('');
-  const sendRef = useRef<(text: string) => void>(() => {});
+  const sendRef = useRef<(text: string, requestId?: string) => void>(() => {});
 
   const login = async (passphrase: string): Promise<boolean> => {
     try {
@@ -55,7 +55,7 @@ export const CommandWorkspace = () => {
 
   useEffect(() => {
     if (!audioEngine) return;
-    const offFinal = audioEngine.onFinalUtterance((u) => { setPartial(''); sendRef.current(u.transcript); });
+    const offFinal = audioEngine.onFinalUtterance((u) => { setPartial(''); sendRef.current(u.transcript, u.utteranceId); });
     const offPartial = audioEngine.onPartial((t) => setPartial(t));
     const offState = audioEngine.onState((s) => setVoiceState(s.state));
     return () => { offFinal(); offPartial(); offState(); };
@@ -79,7 +79,7 @@ export const CommandWorkspace = () => {
     return () => { cancelled = true; };
   }, []);
 
-  const send = async (text: string) => {
+  const send = async (text: string, requestId?: string) => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
 
@@ -93,7 +93,10 @@ export const CommandWorkspace = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ text: trimmed }),
+        // Thread a stable requestId: a voice final utterance reuses its utteranceId so
+        // the server's ExecutionLedger idempotency can dedup a repeated utterance;
+        // typed input gets a fresh id per submission.
+        body: JSON.stringify({ text: trimmed, requestId: requestId || (globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`) }),
       });
       if (res.status === 401) {
         setNeedsAuth(true);

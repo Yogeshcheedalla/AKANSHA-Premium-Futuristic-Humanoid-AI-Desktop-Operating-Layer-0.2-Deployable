@@ -38,6 +38,7 @@ const DEFAULT_BASE_URLS: Record<ProviderType, string | undefined> = {
   openai: 'https://api.openai.com/v1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
   'openai-compatible': undefined,
+  openrouter: 'https://openrouter.ai/api/v1',
   local: 'http://127.0.0.1:8080',
   custom: undefined,
 };
@@ -435,12 +436,44 @@ export class GeminiProvider extends OpenAICompatibleProvider {
   }
 }
 
+/**
+ * OpenRouter — an OpenAI-compatible chat surface, but health/auth is verified
+ * against the AUTHENTICATED `GET /key` endpoint (via OpenRouter.verifyKey), NOT
+ * the PUBLIC `GET /models` (which returns 200 even for a bogus/missing key).
+ * This is the false-success guard the audit required; keys never leave the server.
+ */
+export class OpenRouterProvider extends OpenAICompatibleProvider {
+  constructor(config: ProviderConfigInput) {
+    super({
+      ...config,
+      type: 'openrouter',
+      baseUrl: config.baseUrl || DEFAULT_BASE_URLS.openrouter,
+      headers: { 'HTTP-Referer': 'https://akansha.local', 'X-Title': 'Akansha', ...(config.headers || {}) },
+    });
+  }
+  protected isRemote(): boolean { return true; }
+  async healthCheck(): Promise<HealthStatus> {
+    const started = Date.now();
+    const key = this.apiKey();
+    if (!key) return { state: 'AUTH_REQUIRED', latencyMs: 0, detail: 'No OpenRouter key configured', checkedAt: Date.now() };
+    const { verifyKey } = await import('../openrouter/OpenRouter');
+    const r = await verifyKey(key);
+    const latencyMs = Date.now() - started;
+    if (r.ok) return { state: 'AVAILABLE', latencyMs, checkedAt: Date.now() };
+    if (r.status === 401 || r.status === 403) return { state: 'AUTH_REQUIRED', latencyMs, detail: 'Key rejected by /key', checkedAt: Date.now() };
+    if (r.error === 'network') return { state: 'UNAVAILABLE', latencyMs, detail: 'unreachable', checkedAt: Date.now() };
+    return { state: 'AUTH_REQUIRED', latencyMs, detail: r.error || 'invalid key', checkedAt: Date.now() };
+  }
+}
+
 export function createProvider(config: ProviderConfigInput): ModelProvider {
   switch (config.type) {
     case 'ollama':
       return new OllamaProvider(config);
     case 'gemini':
       return new GeminiProvider(config);
+    case 'openrouter':
+      return new OpenRouterProvider(config);
     case 'openai':
     case 'openai-compatible':
     case 'local':

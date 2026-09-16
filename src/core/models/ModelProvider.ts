@@ -11,6 +11,7 @@ export type ProviderType =
   | 'openai'
   | 'gemini'
   | 'openai-compatible'
+  | 'openrouter'
   | 'local'
   | 'custom';
 
