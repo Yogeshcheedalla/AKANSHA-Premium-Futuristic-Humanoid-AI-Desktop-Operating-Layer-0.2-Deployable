@@ -78,6 +78,29 @@ Connected the backend into the real onboarding UI (no 2nd orchestrator/router).
   (no client_id). First-run VISUAL rendering in the Electron window not screenshot-
   verified here (dev-server HTML/API verified) = environment-limited for pixels.
 
+## DEVELOPMENT FIXTURE CATALOG (2026-09-16, this pass — HEAD f7d71c3 → this)
+Lets the Model Center + install/verify state machine be exercised WITHOUT
+downloading a real model. Development-only; NEVER production; never fakes usable.
+- `src/core/catalog/fixtureCatalog.ts` — self-signed (ephemeral key) fixture with 3
+  cards (compatible / insufficient / unsupported). Entries carry a REAL SHA-256 of
+  real tiny GGUF bytes + valid signature, so integrity/GGUF/signature genuinely pass
+  → UI can reach INSTALLING/VERIFYING. But `usable` is still gated on real inference
+  (LocalGgufProvider/ModelManager.recordInference) → fixture stays NOT READY.
+- `catalogProvider.loadSignedCatalog(env, now, allowFixture?)` — fixture loads ONLY
+  when `NODE_ENV==='development' && AKANSHA_ALLOW_FIXTURE_CATALOG==='1'` (explicit
+  env flag, NOT a filename). A fixture-marked catalog presented in production is
+  rejected: 'fixture-in-production'. New CatalogStatus 'fixture'.
+- `src/core/catalog/installState.ts` — pure resolver AVAILABLE/CHECKING/INCOMPATIBLE/
+  INSTALLING/VERIFYING/FAILED/READY/BLOCKED; READY only when result.usable===true.
+- ModelCenter UI: a magenta DEVELOPMENT FIXTURE banner + per-card state pill; catalog
+  status 'fixture' renders the same cards (not hard-coded).
+- States: Development fixture IMPLEMENTED · Production model catalog NOT CONFIGURED ·
+  Live local inference BLOCKED (no runtime + no signed production artifact).
+- LIVE VERIFIED BOTH WAYS: dev+flag GET /api/ai/setup → catalog 'fixture', 3 models,
+  offline "FIXTURE (DEV ONLY): LOCAL RUNTIME NOT DETECTED" (never READY); production
+  GET → catalog 'not-configured', fixture:false, 0 models.
+- Tests 119/119 (was 105; +14 fixture), tsc 0, next build 0, eslint clean.
+
 ## PRODUCTION ARCHITECTURE LAYER (2026-09-16, HEAD 448ecf8 → this)
 Offline, tested extensions of the SAME architecture (no 2nd orchestrator/router/TTS):
 - `src/core/catalog/ModelCatalog.ts` — rich SIGNED catalog contract (family/version/

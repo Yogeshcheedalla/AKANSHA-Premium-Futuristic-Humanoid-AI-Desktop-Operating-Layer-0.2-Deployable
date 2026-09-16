@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
 import { Cpu, HardDrive, MemoryStick, Monitor, Boxes, Loader2, CheckCircle, AlertTriangle, XCircle, Download, Globe, WifiOff } from 'lucide-react';
 import type { SetupViewModel, ModelCardVM, InstallResult } from '@/core/aiSetup/types';
+import { resolveCardState } from '@/core/catalog/installState';
 
 const RATING_STYLE: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
   EXCELLENT: { label: 'Excellent', cls: 'text-emerald-400', icon: <CheckCircle size={12} /> },
@@ -72,6 +73,12 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
         <div className="text-[11px] text-white/30 mt-3">{vm.device.platform} · {vm.device.architecture} · {vm.device.cpuModel}</div>
       </GlassSurface>
 
+      {vm.catalog.fixture && (
+        <div className="rounded-xl px-4 py-3 mb-4 text-sm border border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-200">
+          <span className="font-semibold">DEVELOPMENT FIXTURE CATALOG</span> — these are test models, not production. Inference is never simulated; a model stays NOT READY until a real inference test passes.
+        </div>
+      )}
+
       {/* Runtime */}
       <div className={`rounded-xl px-4 py-3 mb-4 text-sm border ${vm.runtime.available ? 'border-emerald-400/20 bg-emerald-400/5 text-emerald-300' : 'border-amber-400/20 bg-amber-400/5 text-amber-300'}`}>
         {vm.runtime.available ? <span className="flex items-center gap-2"><CheckCircle size={14} /> Inference runtime: {vm.runtime.name}{vm.runtime.version ? ` (${vm.runtime.version})` : ''}</span>
@@ -115,11 +122,15 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
       {vm.catalog.status === 'invalid' && (
         <GlassSurface className="p-6 rounded-2xl text-center text-rose-300 text-sm">The model catalog signature is invalid — refusing to use it. {vm.catalog.reasons.join('; ')}</GlassSurface>
       )}
-      {vm.catalog.status === 'ready' && (
+      {(vm.catalog.status === 'ready' || vm.catalog.status === 'fixture') && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {vm.catalog.models.map((m) => {
             const rs = rating(m);
             const inst = install[m.id];
+            const cardState = resolveCardState({
+              runnable: m.compatibility.runnable, runtimeAvailable: vm.runtime.available,
+              installable: m.installable, result: inst && inst !== 'busy' ? inst : undefined,
+            });
             return (
               <GlassSurface key={m.id} className="p-5 rounded-2xl flex flex-col">
                 <div className="flex items-start justify-between">
@@ -129,6 +140,7 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
                   </div>
                   <div className={`flex items-center gap-1 text-[11px] font-medium ${rs.cls}`}>{rs.icon}{rs.label}</div>
                 </div>
+                <div className="mt-1"><span className="text-[10px] uppercase tracking-wide text-white/40">{cardState}</span></div>
                 <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-[11px] text-white/50 mt-3">
                   <div>Size <span className="text-white/75">{gb(m.downloadSizeBytes)}</span></div>
                   <div>RAM <span className="text-white/75">{m.minimumRamGB}–{m.recommendedRamGB} GB</span></div>

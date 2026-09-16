@@ -40,6 +40,7 @@ a second of any of these. External models/providers are adapters, never the brai
 |---|---|---|---|
 | First-run AI setup (device→mode→configure→verify) | src/ui/onboarding/FirstRunOnboarding.tsx, src/app/api/ai/{setup,mode,install}, src/core/aiSetup/*, src/core/catalog/{ModelCatalog,catalogProvider} | IMPLEMENTED + LIVE-ENDPOINT-VERIFIED (honest states; no fabricated READY/runtime) | setupViewModel.test, live GET /api/ai/setup |
 | Model Center (permanent) | src/ui/workspaces/ModelCenterWorkspace.tsx (dock 'modelcenter') + page.tsx | IMPLEMENTED (build ok) — consumes signed catalog | next build, live setup JSON |
+| Development fixture catalog + install-state resolver | src/core/catalog/{fixtureCatalog,catalogProvider,installState}.ts | IMPLEMENTED + LIVE-VERIFIED BOTH WAYS: dev+flag → fixture (never READY, honest UNSUPPORTED w/o runtime); production → not-configured (fixture excluded by env flag, not filename) | fixtureCatalog.test 14; live curl dev+prod |
 | Master Orchestrator + pipeline | src/core/orchestration, api/akansha/command | EXISTS (single) | audit.test, build |
 | Risk + Permission gate | core/security/RiskEngine, core/execution/PermissionEngine | EXISTS | audit.test |
 | ModelRouter (cloud+local policy, fallback) | core/models/ModelRouter | EXISTS | audit.test |

@@ -61,6 +61,10 @@ export interface ModelCatalog {
   version: number;
   issuedAt: number;
   expiresAt?: number;
+  /** Explicit production/development marker. A fixture catalog is NEVER valid in
+   *  production — enforced by catalogProvider via an env flag, not a filename. */
+  environment?: 'production' | 'development';
+  fixture?: boolean;
   models: CatalogModel[];
 }
 

@@ -3,7 +3,8 @@
  * client ('use client') components — it has no runtime/server dependencies, so
  * it never pulls Node APIs (fs/os/crypto) into the browser bundle.
  */
-export type CatalogStatus = 'ready' | 'not-configured' | 'invalid';
+export type CatalogStatus = 'ready' | 'fixture' | 'not-configured' | 'invalid';
+export type CardState = 'AVAILABLE' | 'CHECKING' | 'INCOMPATIBLE' | 'INSTALLING' | 'VERIFYING' | 'FAILED' | 'READY' | 'BLOCKED';
 
 export interface ModelCardVM {
   id: string; name: string; family: string; version: string; quantization?: string;
@@ -25,7 +26,7 @@ export interface SetupViewModel {
     acceleration: string[]; tier: number;
   };
   runtime: { available: boolean; name: string; version?: string; supportsAcceleration: string[] };
-  catalog: { status: CatalogStatus; reasons: string[]; models: ModelCardVM[] };
+  catalog: { status: CatalogStatus; reasons: string[]; fixture: boolean; models: ModelCardVM[] };
   aiMode: { recommended: 'offline' | 'cloud'; offlineReady: boolean; reason: string };
   online: { provider: string; connected: boolean; verified: boolean; label?: string | null };
   readiness: { offline: string; online: string };

@@ -19,35 +19,10 @@ import { decideAiMode } from '@/core/models/AiMode';
 import { toManifestEntry, type CatalogModel } from '@/core/catalog/ModelCatalog';
 import { connectedServices as defaultConnected, type ConnectedServices } from '@/core/identity/ConnectedServices';
 import type { ManifestModelEntry } from '@/core/models/local/ModelIntegrity';
+import type { SetupViewModel, ModelCardVM, CatalogStatus } from './types';
 
-export interface SetupViewModel {
-  device: {
-    platform: string; architecture: string; cpuModel: string; cpuCores: number;
-    ramGB: number; freeDiskGB: number;
-    gpu: { detected: boolean; vendor?: string; vramGB?: number };
-    acceleration: string[];
-    tier: number;
-  };
-  runtime: { available: boolean; name: string; version?: string; supportsAcceleration: string[] };
-  catalog: { status: CatalogStatus; reasons: string[]; models: ModelCardVM[] };
-  aiMode: { recommended: 'offline' | 'cloud'; offlineReady: boolean; reason: string };
-  online: { provider: string; connected: boolean; verified: boolean; label?: string | null };
-  readiness: { offline: string; online: string };
-}
-export type CatalogStatus = CatalogResult['status'];
-
-export interface ModelCardVM {
-  id: string; name: string; family: string; version: string; quantization?: string;
-  format: string; downloadSizeBytes: number; installedSizeBytes: number;
-  minimumRamGB: number; recommendedRamGB: number; minimumStorageGB: number;
-  gpuRequirements?: { required: boolean; minVramGB?: number };
-  runtimeRequirement: string; contextLength: number; capabilities: string[];
-  quality: CatalogModel['quality']; license: string; sourceUrl: string;
-  performanceLabel: 'Measured' | 'Estimated' | 'Unknown'; estimatedTokensPerSec?: number; memoryGB?: number;
-  bestFor?: string; drawbacks?: string; internetRequired: boolean;
-  compatibility: { score: number; rating: string; runnable: boolean; reasons: string[] };
-  sha256Present: boolean; signed: boolean; installable: boolean;
-}
+export type { SetupViewModel, ModelCardVM } from './types';
+export type { CatalogStatus };
 
 export interface SetupDeps {
   hardware: HardwareProfile;
@@ -90,6 +65,12 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
   if (deps.catalog.status === 'not-configured') offline = 'MODEL CATALOG NOT CONFIGURED';
   else if (!deps.runtime.available) offline = 'LOCAL RUNTIME NOT DETECTED';
   else if (!offlineReady) offline = 'LOCAL MODEL NOT INSTALLED';
+  // A development fixture must NEVER masquerade as a production READY.
+  if (deps.catalog.status === 'fixture' && offline === 'OFFLINE AI READY') {
+    offline = 'FIXTURE CATALOG (DEV ONLY) — not a production model';
+  } else if (deps.catalog.status === 'fixture') {
+    offline = `FIXTURE (DEV ONLY): ${offline}`;
+  }
 
   const online = deps.openrouter.connected && deps.openrouter.verified ? 'ONLINE AI READY' : 'OPENROUTER CONNECTION NOT CONFIGURED';
 
@@ -103,6 +84,7 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
     runtime: deps.runtime,
     catalog: {
       status: deps.catalog.status, reasons: deps.catalog.reasons,
+      fixture: deps.catalog.status === 'fixture',
       models: deps.catalog.models.map((m) => card(m, deps)),
     },
     aiMode: { recommended: mode.mode, offlineReady, reason: mode.reason },
