@@ -93,6 +93,6 @@ export async function provisionAndVerify(opts: {
   if (!infer.ok || !infer.text.trim()) { unregister(entry.id); return { ok: false, usable: false, stage: 'inference', reason: infer.reason || 'no output' }; }
 
   // 4) usable ONLY now; record the measured benchmark (prompt/gen t/s are measured)
-  const rec = registerUsable(entry, artifactPath, { genTps: infer.genTps ?? null, totalMs: infer.totalMs, text: infer.text.slice(0, 200) });
+  const rec = registerUsable(entry, artifactPath, { genTps: infer.genTps ?? null, promptTps: infer.promptTps ?? null, totalMs: infer.totalMs, text: infer.text.slice(0, 200) });
   return { ok: true, usable: true, stage: 'ready', benchmark: rec.benchmark };
 }

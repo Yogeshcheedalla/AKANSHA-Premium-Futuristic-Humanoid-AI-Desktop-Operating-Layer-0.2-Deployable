@@ -33,7 +33,7 @@ export interface LocalModelState {
   integrityVerified: boolean;
   inferenceVerified: boolean;
   lastOutput?: string;
-  lastTimings?: { totalMs: number; genTps?: number | null };
+  lastTimings?: { totalMs: number; genTps?: number | null; promptTps?: number | null };
   reason?: string;
 }
 
@@ -51,7 +51,7 @@ export function detectLlamaRuntime(candidatePaths: string[]): LocalRuntime {
  */
 export function runLocalInference(
   runtime: LocalRuntime, modelPath: string, prompt: string, opts: { maxTokens?: number; timeoutMs?: number } = {}
-): Promise<{ ok: boolean; text: string; genTps?: number | null; totalMs: number; reason?: string }> {
+): Promise<{ ok: boolean; text: string; genTps?: number | null; promptTps?: number | null; totalMs: number; reason?: string }> {
   return new Promise((resolve) => {
     if (!runtime.exists || !runtime.binaryPath) return resolve({ ok: false, text: '', totalMs: 0, reason: 'runtime-missing' });
     const t0 = Date.now();
@@ -61,17 +61,21 @@ export function runLocalInference(
     try { child = spawn(runtime.binaryPath, args, { windowsHide: true }); }
     catch (e: any) { return resolve({ ok: false, text: '', totalMs: 0, reason: 'spawn-error:' + (e?.message || e) }); }
     let settled = false;
-    const finish = (r: { ok: boolean; text: string; genTps?: number | null; totalMs: number; reason?: string }) => { if (!settled) { settled = true; clearTimeout(timer); resolve(r); } };
+    const finish = (r: { ok: boolean; text: string; genTps?: number | null; promptTps?: number | null; totalMs: number; reason?: string }) => { if (!settled) { settled = true; clearTimeout(timer); resolve(r); } };
     const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} finish({ ok: false, text: '', totalMs: Date.now() - t0, reason: 'timeout' }); }, opts.timeoutMs ?? 120000);
     child.stdout.on('data', (b: Buffer) => { out += b.toString('utf8'); });
     child.stderr.on('data', (b: Buffer) => { out += b.toString('utf8'); });
     child.on('error', (e: any) => finish({ ok: false, text: '', totalMs: Date.now() - t0, reason: 'err:' + (e?.message || e) }));
     child.on('close', (code: number) => {
+      // llama.cpp prints a real stats line, e.g. "[ Prompt: 95.5 t/s | Generation: 20.4 t/s ]".
+      // We report ONLY what it exposes; token COUNTS are not printed in single-turn mode,
+      // so callers must treat them as NOT AVAILABLE rather than estimate them.
       const gen = /Generation:\s*([\d.]+)\s*t\/s/i.exec(out);
+      const prm = /Prompt:\s*([\d.]+)\s*t\/s/i.exec(out);
       // Extract the assistant line: single-turn prints the completion; take last
       // non-empty line that isn't a stats/banner line.
       const text = out.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !/t\/s|Loading|build|model |error|Exiting|^\[|^\s*$/i.test(l)).slice(-1)[0] || '';
-      finish({ ok: code === 0 && text.length > 0, text, genTps: gen ? Number(gen[1]) : null, totalMs: Date.now() - t0, reason: text ? undefined : 'no-output' });
+      finish({ ok: code === 0 && text.length > 0, text, genTps: gen ? Number(gen[1]) : null, promptTps: prm ? Number(prm[1]) : null, totalMs: Date.now() - t0, reason: text ? undefined : 'no-output' });
     });
   });
 }
@@ -123,9 +127,24 @@ export class LocalGgufProvider implements ModelProvider {
     const prompt = request.messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
     const r = await runLocalInference(this.runtime, this.state.artifactPath, prompt, { maxTokens: request.maxTokens });
     if (!r.ok) throw new Error('Local inference failed: ' + (r.reason || 'no output'));
+    // Persist the REAL measured metrics from this genuine run (no estimation) so
+    // observability / benchmarks can report exactly what llama.cpp exposed.
+    this.state.lastOutput = r.text;
+    this.state.lastTimings = { totalMs: r.totalMs, genTps: r.genTps ?? null, promptTps: r.promptTps ?? null };
     return {
       id: `local-${Date.now()}`, content: r.text, model: this.state.entry.id, provider: this.id,
       providerType: 'local', finishReason: 'stop',
+    };
+  }
+
+  /** The last genuine run's real metrics (llama-reported). Null if never run. */
+  getLastMetrics(): { totalMs: number; genTps: number | null; promptTps: number | null; text: string } | null {
+    if (!this.state.lastTimings || !this.state.lastOutput) return null;
+    return {
+      totalMs: this.state.lastTimings.totalMs,
+      genTps: this.state.lastTimings.genTps ?? null,
+      promptTps: this.state.lastTimings.promptTps ?? null,
+      text: this.state.lastOutput,
     };
   }
   async *stream(): AsyncIterable<ModelStreamEvent> { /* non-streaming locally; never fake it */ }

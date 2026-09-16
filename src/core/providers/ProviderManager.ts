@@ -3,6 +3,8 @@ import { modelProviders, providerModels } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { createProvider, type ProviderConfigInput } from '../../integrations/models/ProviderFactory';
 import type { ModelProvider, ModelInfo, HealthStatus, ProviderType } from '../models/ModelProvider';
+import { LocalGgufProvider, detectLlamaRuntime, type LocalModelState } from '../models/local/LocalGgufProvider';
+import { readUsable } from '../models/local/LocalModelRegistry';
 import { credentialVault } from '../security/CredentialVault';
 import { eventBus } from '../events/EventBus';
 
@@ -101,6 +103,7 @@ export class ProviderManager {
       for (const cfg of this.builtin()) {
         this.instantiate(cfg);
       }
+      this.syncLocalProviders();
       return;
     }
 
@@ -117,6 +120,63 @@ export class ProviderManager {
         fallbackPriority: row.fallbackPriority,
         ...(typeof row.settings === 'object' && row.settings ? row.settings : {}),
       });
+    }
+    this.syncLocalProviders();
+  }
+
+  /**
+   * Register the verified local GGUF provider with the single ModelRouter.
+   *
+   * DESKTOP-ONLY AND RUNTIME-GATED: this is inert on a server (e.g. Vercel)
+   * because no llama.cpp binary is detected there — we never download or run a
+   * runtime on the web host, and we never register an unverified model. A model
+   * is exposed here ONLY if it is already in the LocalModelRegistry, which is
+   * written solely by provisionAndVerify() after a REAL inference self-test.
+   * The provider's own healthCheck/generate re-enforce the integrity+inference
+   * gate, so this method cannot fabricate usability. Failures are swallowed so
+   * local-inference problems never break cloud provider loading.
+   */
+  private syncLocalProviders(): void {
+    try {
+      const paths = (process.env.LLAMA_CPP_PATHS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (paths.length === 0) return;
+
+      const runtime = detectLlamaRuntime(paths);
+      if (!runtime.exists || !runtime.binaryPath) return;
+
+      const usable = readUsable();
+      for (const rec of usable) {
+        const entry = {
+          id: rec.id,
+          file: rec.artifactPath,
+          url: '',
+          sha256: rec.sha256,
+          sizeBytes: 0,
+          format: 'gguf' as const,
+        };
+        const state: LocalModelState = {
+          entry,
+          artifactPath: rec.artifactPath,
+          integrityVerified: true,
+          inferenceVerified: true,
+          lastOutput: rec.benchmark?.text || '',
+          lastTimings: rec.benchmark?.totalMs ? { totalMs: rec.benchmark.totalMs, genTps: rec.benchmark.genTps ?? null, promptTps: rec.benchmark.promptTps ?? null } : undefined,
+        };
+        // Gate on the same honest predicate the provider uses: registry entries
+        // only exist after a real inference, but we re-check rather than trust it.
+        if (!state.lastOutput || state.lastOutput.trim().length === 0) continue;
+        try {
+          this.providers.set('local-llama', new LocalGgufProvider(state, runtime));
+        } catch {
+          /* ignore a single bad record; never break provider load */
+        }
+        break;
+      }
+    } catch {
+      /* desktop-only convenience; never allowed to break provider loading */
     }
   }
 

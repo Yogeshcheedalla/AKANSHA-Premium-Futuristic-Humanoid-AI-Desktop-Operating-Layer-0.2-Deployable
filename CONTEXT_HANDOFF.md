@@ -178,6 +178,42 @@ is preserved (one auth engine, no weakening).
 - Vercel: push to main auto-redeploys (git-connected); verify on
   https://akansha-gamma.vercel.app after push.
 
+## FINAL LOCAL AI PRODUCTION VERIFICATION + SIGNED BENCHMARK + OPENROUTER DOC (this pass)
+Closed Objective 1–3. REAL desktop inference verified through the AUTHORITATIVE chain
+(MasterOrchestrator → ModelRouter → LocalGgufProvider → llama.cpp b10964 → signed
+Qwen2.5-1.5B GGUF). Vercel NEVER runs llama.cpp — desktop-only, correctly guarded.
+- **Wired** `ProviderManager.syncLocalProviders()` (called at both `load()` exits):
+  registers the verified GGUF as `local-llama` ONLY when `LLAMA_CPP_PATHS` detects a
+  runtime AND a usable (inference-verified) `LocalModelRegistry` record exists; re-checks
+  non-empty `lastOutput`. Fully inert on Vercel (no runtime). Failures swallowed so cloud
+  provider load never breaks.
+- **Surfaced real metrics** without fabricating: `runLocalInference` now also parses
+  llama's `Prompt: X t/s`; `LocalGgufProvider` records real per-run `{totalMs,genTps,
+  promptTps}` + `getLastMetrics()`; registry + provider `lastTimings` carry promptTps.
+  Token COUNTS are not printed by llama-cli single-turn → reported NOT AVAILABLE, never
+  estimated. `LocalModelState.lastTimings` += promptTps.
+- **Live benchmark** `scripts/live-inference-bench.ts` (not in `npm test`; needs runtime
+  + 1.1 GB model). Measured: catalog Ed25519 `READY`; actual SHA-256 == signed
+  `6a1a2eb6…`, size ok; GGUF v3 / 339 tensors valid; self-test usable=true (29.4 t/s gen,
+  113.3 t/s prompt, 8876 ms); LOCAL_ONLY chain = `[local-llama]`, cloud in chain = `[]`;
+  3 orchestrator runs all COMPLETED/verified on local-llama, gen 29.8/32.1/35.1 t/s,
+  prompt 117.2/128.2/133.4 t/s, wall 4434/3966/3928 ms (cold incl. model load);
+  avg gen ≈ 32.3 t/s. Acceptance A/B/C/D all PASS.
+- **Tests added (offline-safe, no real inference needed):**
+  `src/core/providers/ProviderManager.local.test.ts` (5) proves inert-without-runtime,
+  inert-without-usable, empty-output-not-trusted, AVAILABLE-when-usable, and LOCAL_ONLY
+  chain = local only + no silent OpenRouter fallback;
+  `src/app/api/ai/online/connect/route.test.ts` (2) proves unauth 401 and accountless
+  guest + no client_id → honest 501 with no fabricated authorize URL. Suite **148/148**
+  (was 141). tsc 0, next build 0. Lint: 9 pre-existing findings, all in files NOT touched
+  (command/route, page, presence/waveform, 3 workspaces); ZERO new lint issues.
+- **Docs:** new `AKANSHA_OPENROUTER.md` (exact env names from code, PKCE/CSRF/callback,
+  production callback https://akansha-gamma.vercel.app/api/ai/online/callback, GET /key
+  verify, opaque vault, 501-when-unconfigured, how to add a real client_id); README
+  status table updated (pipeline benchmark numbers, accountless, OpenRouter BLOCKED).
+- **BLOCKED (unchanged, not faked):** OpenRouter LIVE browser OAuth — needs a real
+  registered `AKANSHA_OPENROUTER_CLIENT_ID`; connect returns 501 until then.
+
 ## FILES CHANGED (this recovery)
 Tracked edits: src/core/models/ModelProvider.ts, src/core/providers/ProviderManager.ts,
 src/integrations/models/ProviderFactory.ts, src/ui/workspaces/CommandWorkspace.tsx.

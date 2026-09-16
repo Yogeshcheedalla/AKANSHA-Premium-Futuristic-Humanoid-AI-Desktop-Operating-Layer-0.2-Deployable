@@ -121,13 +121,14 @@ Statuses are truthful: `VERIFIED` (executed + tested), `IMPLEMENTED` (code + tes
 |---|---|---|
 | MasterOrchestrator cognitive loop | Web + Desktop | **VERIFIED** |
 | ModelRouter (cloud providers + fallback) | Web + Desktop | **VERIFIED** |
-| OpenRouter integration (PKCE, CSRF, `/key` verify, opaque vault) | Web + Desktop | **IMPLEMENTED** · live OAuth **CONFIGURED-gated** (needs a registered `client_id`) |
+| OpenRouter integration (PKCE, CSRF, `/key` verify, opaque vault) | Web + Desktop | **IMPLEMENTED · VERIFIED** · live OAuth **BLOCKED** (needs a registered `client_id`; connect returns honest `501`). See [`AKANSHA_OPENROUTER.md`](./AKANSHA_OPENROUTER.md) |
 | Model integrity (Ed25519 signed catalog → SHA-256 → GGUF validation) | Desktop | **VERIFIED** |
 | Hardware probe (RAM/CPU/arch/GPU-hint/disk/tier) | Desktop | **VERIFIED** |
 | Runtime provisioning (download → SHA → size → extract → binary-exists) | Desktop | **VERIFIED (LIVE)** |
-| Real local inference (llama.cpp + Qwen2.5-1.5B GGUF, ~30 tok/s) | Desktop | **LIVE-VERIFIED** |
+| Real local inference via full pipeline (MasterOrchestrator → ModelRouter → LocalGgufProvider → `llama.cpp` + signed Qwen2.5-1.5B GGUF) | Desktop | **LIVE-VERIFIED** · 3-run benchmark ~29–35 tok/s gen / ~117–133 tok/s prompt (llama-reported), wall ~3.9–4.4 s incl. cold model load; `scripts/live-inference-bench.ts` |
 | `usable=true` gated on real inference (never on download alone) | Desktop | **VERIFIED** |
-| Offline AI mode (no silent cloud fallback) | Desktop | **VERIFIED** |
+| Offline AI mode (no silent cloud fallback — `LOCAL_ONLY` chain excludes OpenRouter) | Desktop | **VERIFIED** |
+| Accountless AI (guest session, no Akansha signup; guest blocked from sensitive/admin) | Web + Desktop | **VERIFIED** |
 | Voice pipeline + ownership + barge-in state + dedup | Web + Desktop | **VERIFIED (logic)** · live mic/speaker hardware-dependent |
 | MCP security (unknown / unsandboxed servers blocked) | Web + Desktop | **VERIFIED** |
 | First-run AI setup + permanent Model Center | Web + Desktop | **IMPLEMENTED** (live endpoint) |
