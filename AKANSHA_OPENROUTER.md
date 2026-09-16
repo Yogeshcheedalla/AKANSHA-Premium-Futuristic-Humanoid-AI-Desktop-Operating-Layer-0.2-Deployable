@@ -1,130 +1,120 @@
-# AKANSHA — OpenRouter Online AI (OAuth) Configuration
+# AKANSHA — OpenRouter Online AI (OAuth PKCE) Configuration
 
-This documents **exactly what the application currently expects**. Every name,
-endpoint, and behavior below is read from the code, not invented. Akansha NEVER
-collects the OpenRouter password and NEVER auto-creates an account.
+This documents **exactly what the current official OpenRouter OAuth PKCE flow and
+this application expect**. Names, endpoints and behaviors are read from the code and
+from OpenRouter's current documentation. Akansha NEVER collects the OpenRouter
+password and NEVER invents an identifier.
 
-## Purpose
+> **Correction:** an earlier build gated "Connect OpenRouter" on a required
+> `AKANSHA_OPENROUTER_CLIENT_ID` and returned `501` without one. OpenRouter's
+> **current** PKCE flow does **not** require a `client_id` — it needs only a
+> callback URL. That false blocker has been removed. `client_id` is now optional
+> (forwarded only if you register one later) and never fabricated.
 
-OpenRouter OAuth lets a user connect **their own** OpenRouter account so Akansha
-can use cloud ("online") AI. Authorization happens entirely through **OpenRouter's
-own** browser flow (which also hosts OpenRouter sign-up/sign-in). Akansha only
-receives an authorization `code` at the callback and exchanges it for the user's
-own API key, which is stored as an opaque credential.
+## The flow (as OpenRouter documents it)
 
-## The two independent paths
+```
+https://openrouter.ai/auth
+    ?callback_url=<your callback>
+    &code_challenge=<S256(verifier)>
+    &code_challenge_method=S256
+    [&key_label=Akansha]            # optional
+    [&state=<single-use>]           # forwarded; not relied upon (see CSRF)
+        |  user signs in / signs up ON OpenRouter and authorizes Akansha
+        v
+<your callback>?code=<authorization-code>
+        |
+        v
+POST https://openrouter.ai/api/v1/auth/keys
+     { "code": ..., "code_verifier": ..., "code_challenge_method": "S256" }
+        v   ->  { "key": "sk-or-..." }   (the USER's own key)
+GET  https://openrouter.ai/api/v1/key     (Authorization: Bearer <key>)  -> verify
+        v
+store ONLY as an opaque credentialRef (AES-GCM vault; DPAPI on desktop)
+```
 
-| Path | Where it runs | Needs client_id? | Needs an Akansha account? |
-| --- | --- | --- | --- |
-| Offline / local AI (llama.cpp + signed GGUF) | **Desktop only** | No | **No** (accountless guest) |
-| Online AI (OpenRouter OAuth) | Web + desktop | **Yes** for live OAuth | **No** before/for connecting |
+There is **no** `client_id`, `response_type`, `redirect_uri`, or `scope` in
+OpenRouter's `/auth` shape — it uses `callback_url`. The **only required** input is
+a real callback URL.
 
-An API-key path also exists independently of OAuth: setting `OPENROUTER_API_KEY`
-makes the `openrouter` provider usable for generation without the OAuth dance.
-The OAuth flow below is specifically the "Continue with OpenRouter" account
-connection.
+## Required / relevant environment variables (real names from the code)
 
-## Required environment variables (real names from the code)
+Resolved in `openRouterOAuthConfig()` / `resolveOAuthCallback()`:
 
-Read from `openRouterOAuthConfig()` in `src/core/identity/openRouterOAuth.ts`:
+| Variable | Required? | Meaning |
+| --- | --- | --- |
+| `AKANSHA_PUBLIC_URL` | Recommended (production) | Base public URL. Callback = `${AKANSHA_PUBLIC_URL}/api/ai/online/callback`. |
+| `AKANSHA_OPENROUTER_REDIRECT_URI` | Optional | Exact callback URL; **overrides** `AKANSHA_PUBLIC_URL` derivation. Must match the deployed origin exactly. |
+| `AKANSHA_OPENROUTER_CLIENT_ID` | **Optional (NOT required)** | Forwarded to `/auth` only if you have registered one. Never invented. |
+| `AKANSHA_OPENROUTER_KEY_LABEL` | Optional | OpenRouter's `key_label` (default `Akansha`). |
+| `AKANSHA_OPENROUTER_AUTHORIZE_URL` | Optional | Override `/auth` endpoint. |
 
-| Variable | Required? | Meaning | Source |
-| --- | --- | --- | --- |
-| `AKANSHA_OPENROUTER_CLIENT_ID` | **Yes** for live OAuth | The OAuth application client id registered with OpenRouter. If absent, the flow is honestly **BLOCKED**. | `openRouterOAuthConfig().clientId` |
-| `AKANSHA_OPENROUTER_REDIRECT_URI` | Optional | Exact OAuth redirect/callback URI. If omitted it is **derived** from `AKANSHA_PUBLIC_URL`. | `openRouterOAuthConfig().redirectUri` |
-| `AKANSHA_PUBLIC_URL` | Recommended in prod | Base public URL; redirect is derived as `${AKANSHA_PUBLIC_URL}/api/ai/online/callback`. | `openRouterOAuthConfig()` |
-| `AKANSHA_OPENROUTER_SCOPE` | Optional | OAuth scope; **defaults to `model:read`**. | `openRouterOAuthConfig().scope` |
-| `AKANSHA_OPENROUTER_AUTHORIZE_URL` | Optional | Override the authorize endpoint (defaults to `https://openrouter.ai/auth`). | `openRouterOAuthConfig().authorizeUrl` |
+Callback precedence (never conflicting): `AKANSHA_OPENROUTER_REDIRECT_URI` →
+`AKANSHA_PUBLIC_URL + /api/ai/online/callback` → the live request origin. So the
+deployed site can start the flow with `AKANSHA_PUBLIC_URL` set (or even without it,
+deriving from the request host).
 
-> Note: the plain-API-key provider uses the **different** variables
-> `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`. Those are not
-> the OAuth `AKANSHA_OPENROUTER_*` names. Do not confuse them.
+> The plain-API-key provider path is separate and uses `OPENROUTER_API_KEY`,
+> `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL` — do not confuse those with the OAuth
+> `AKANSHA_OPENROUTER_*` names.
 
-## Production callback / redirect URI
-
-For the deployed production site the callback is:
+## Production callback
 
 ```
 https://akansha-gamma.vercel.app/api/ai/online/callback
 ```
 
-This is handled by `src/app/api/ai/online/callback/route.ts` (GET and POST).
-When configuring OpenRouter, register this **exact** string as the redirect URI.
-If `AKANSHA_OPENROUTER_REDIRECT_URI` is not set, the app derives the same value
-from `AKANSHA_PUBLIC_URL=https://akansha-gamma.vercel.app`.
-
-## OAuth flow (implemented, architecture verified by tests)
-
-1. **Connect** — `POST /api/ai/online/connect` (guarded as `authenticated`).
-   Server mints PKCE (S256) `verifier`/`challenge` + a single-use `state`, stores
-   `{verifier, redirectUri}` in `pendingOAuth`, and returns the OpenRouter
-   authorize URL. The URL is opened in the **system browser**, never an embedded
-   webview.
-2. **Authorize at OpenRouter** — the user signs into / creates their OpenRouter
-   account **on OpenRouter's own page**. Akansha is not involved and never sees a
-   password.
-3. **Callback** — OpenRouter redirects to
-   `/api/ai/online/callback?code=...&state=...`. The route **takes** the pending
-   `state` (single-use) and `parseCallback` rejects any **state mismatch (CSRF)**
-   or an `error` response.
-4. **Code exchange** — `completeOpenRouterAuth` calls
-   `POST https://openrouter.ai/api/v1/auth/keys` (with the code + PKCE verifier)
-   to obtain the user's own API key.
-5. **Verification** — the key is checked against the **authenticated**
-   `GET https://openrouter.ai/api/v1/key`. (A bogus key → 401 → not stored. The
-   public `/models` list is NOT used to judge auth, because it returns 200 even
-   for a bad key.)
-6. **Credential storage** — only on a successful verify, the key is stored as an
-   **opaque** `credentialRef` via `ConnectedServices` (AES-GCM CredentialVault,
-   DPAPI-backed on desktop). The raw key is **never** returned to the renderer,
-   logged, or placed in traces. The route returns only a masked label.
-
-### Security properties preserved
-
-- PKCE (S256) + CSRF `state`, single-use pending store.
-- Authenticated `GET /key` verification before any trust.
-- Opaque credential storage; OpenRouter connection is a **ConnectedService**,
-  separate from Akansha identity.
-- **Accountless**: no Akansha signup is needed to start a chat or to begin the
-  OpenRouter connection (the guest session satisfies the `authenticated` guard);
-  guests are still refused `sensitive`/`admin` operations.
-
-## What happens when `client_id` is absent (current production state)
-
-`isOAuthConfigured()` returns `false`, so `startOpenRouterConnect()` returns
-`{ configured:false, reason:'OPENROUTER CLIENT_ID/redirect not configured' }`,
-and `POST /api/ai/online/connect` responds **`501`**:
-
-```json
-{ "ok": false, "configured": false, "error": "OPENROUTER CLIENT_ID/redirect not configured" }
+Recommended production env (Vercel project `akansha`):
+```
+AKANSHA_PUBLIC_URL=https://akansha-gamma.vercel.app
 ```
 
-No authorize URL is fabricated. The Model Center shows "OpenRouter connection not
-configured". **This 501 is correct, expected behavior — not a deployment failure.**
-Verified by `src/app/api/ai/online/connect/route.test.ts`.
+## Security properties (preserved)
 
-## How to configure a real client_id
+- **PKCE S256**: random `code_verifier` (never in the browser or long-term storage);
+  `code_challenge = BASE64URL(SHA-256(verifier))` sent to `/auth`; verifier replayed
+  on the exchange.
+- **CSRF**: OpenRouter's documented callback returns only `code` (it does **not** echo
+  `state`), so the pending PKCE transaction is bound to the caller's **authenticated
+  Akansha session** and is **single-use** (`pendingOAuth.takeForSub`). A returned
+  `state` is still validated for mismatch when present. No code is ever exchanged
+  before a pending transaction for THIS session is found; a replayed/consumed
+  transaction is rejected.
+- **Verification before trust**: the exchanged key is checked against the
+  **authenticated** `GET /api/v1/key` (a bogus key → 401 → not stored). The public
+  `/models` list is never used to judge auth (it returns 200 even unauthenticated).
+- **Credential storage**: only an opaque `credentialRef` in ConnectedServices
+  (AES-GCM vault, DPAPI-backed on desktop). The raw key is never returned to the
+  renderer, logged, or placed in traces. Connected OpenRouter is separate from
+  Akansha identity.
 
-1. Create an OAuth application in your OpenRouter account and register the exact
-   redirect URI above (`https://akansha-gamma.vercel.app/api/ai/online/callback`).
-2. In Vercel (project `akansha`, team `cheedallayogesh05-1678s-projects`), set:
-   ```
-   AKANSHA_OPENROUTER_CLIENT_ID=<the registered client id>
-   AKANSHA_PUBLIC_URL=https://akansha-gamma.vercel.app
-   ```
-   (Optionally pin `AKANSHA_OPENROUTER_REDIRECT_URI` to the exact callback.)
-3. Redeploy so the value is present at runtime.
+## Accountless AKANSHA
 
-Never commit the client id value, and **never** fabricate one to make a demo pass.
+No Akansha signup is required. `POST /api/ai/online/connect` is guarded as
+`authenticated`, which an accountless **guest** session satisfies — so "Continue
+with OpenRouter" works with no Akansha account. Guests are still refused
+`sensitive`/`admin` operations. Authentication and (if needed) signup happen on
+OpenRouter's own page; Akansha never sees the OpenRouter password, recovery code, or
+MFA secret.
+
+## When is the endpoint still `501`?
+
+Only when **no** callback URL can be resolved (no `AKANSHA_OPENROUTER_REDIRECT_URI`,
+no `AKANSHA_PUBLIC_URL`, and no parseable request origin) — a genuinely
+un-configurable state. It is **not** used as a proxy for "we haven't invented a
+client_id", because no client_id is needed.
 
 ## Live status (honest)
 
-- **Architecture + code: VERIFIED** — PKCE/state, callback CSRF rejection, code
-  exchange, `GET /key` verification, and opaque credential storage are all
-  implemented and covered by offline tests
-  (`src/integrations/openrouter/oauth.test.ts`, `OpenRouter.test.ts`,
-  `src/core/identity/openRouterOAuth.test.ts`,
-  `src/app/api/ai/online/connect/route.test.ts`).
-- **Live end-to-end OAuth: BLOCKED** — requires a real registered
-  `AKANSHA_OPENROUTER_CLIENT_ID`, which is **NOT CONFIGURED**. Until one is
-  supplied the connect route correctly returns `501`.
+- **Architecture + code: VERIFIED** offline — client_id-free authorize URL
+  (`callback_url` + PKCE S256 + optional `key_label`/`state`), session-bound
+  single-use CSRF, code exchange at `POST /api/v1/auth/keys` with
+  `{code, code_verifier, code_challenge_method}`, `GET /key` verification, opaque
+  vault storage, accountless guest access. Covered by
+  `OpenRouter.test.ts`, `oauth.test.ts`, `openRouterOAuth.test.ts`, and the
+  `connect/` + `callback/` route tests.
+- **Production `connect`: VERIFIED LIVE** — returns a real `openrouter.ai/auth`
+  redirect (HTTP 200) for a session, no longer a client_id `501`.
+- **Full end-to-end OAuth completion** (real login → code → key stored): requires a
+  human to finish the login on OpenRouter. It is not claimed complete here without
+  that browser evidence, and no client_id is invented to fake it.

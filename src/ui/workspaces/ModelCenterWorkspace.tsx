@@ -137,7 +137,7 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
               : <><Globe size={13} /> {vm.online.connected && vm.online.verified ? 'Reconnect OpenRouter' : 'Continue with OpenRouter'}</>}
           </button>
         ) : (
-          <div className="mt-3 text-[11px] text-amber-300/80">OPENROUTER CONNECTION NOT CONFIGURED — add a registered client_id to enable one-click sign-in/sign-up via OpenRouter.</div>
+          <div className="mt-3 text-[11px] text-amber-300/80">OPENROUTER CONNECTION NOT CONFIGURED — set the public URL / callback (no client_id needed) to enable one-click sign-in/sign-up via OpenRouter.</div>
         )}
         {connectMsg && <div className="mt-2 text-[11px] text-white/50">{connectMsg}</div>}
         {vm.online.configured && <div className="mt-1.5 text-[10px] text-white/25">You sign in or create your account securely on OpenRouter — Akansha never sees your OpenRouter password.</div>}

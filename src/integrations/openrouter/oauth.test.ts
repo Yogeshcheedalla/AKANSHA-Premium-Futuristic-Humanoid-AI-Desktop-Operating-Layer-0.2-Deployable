@@ -10,16 +10,22 @@ function mockFetch(handler: (url: string, init?: any) => any): typeof fetch {
 }
 const json = (body: any, status = 200) => ({ ok: status < 400, status, json: async () => body });
 
-test('oauth begin: builds PKCE authorize url with a real client_id only', () => {
-  const s = beginOpenRouterAuth({ clientId: 'cid', redirectUri: 'http://127.0.0.1:43110/callback' });
-  assert.ok(s.authorizeUrl.includes('code_challenge=') && s.authorizeUrl.includes('code_challenge_method=S256'));
+test('oauth begin: builds a client_id-FREE PKCE authorize url (callback_url + S256)', () => {
+  const s = beginOpenRouterAuth({ redirectUri: 'https://akansha-gamma.vercel.app/api/ai/online/callback' });
+  assert.ok(s.authorizeUrl.includes('https://openrouter.ai/auth'), 'points at OpenRouter /auth');
+  assert.ok(s.authorizeUrl.includes('callback_url='), 'carries callback_url');
+  assert.ok(s.authorizeUrl.includes('code_challenge=') && s.authorizeUrl.includes('code_challenge_method=S256'), 'carries PKCE S256');
+  assert.ok(!/[?&]client_id=/.test(s.authorizeUrl), 'does NOT invent a client_id');
   assert.ok(s.verifier.length >= 43);
 });
 
-test('oauth parseCallback: rejects state mismatch (CSRF) and accepts a good code', () => {
+test('oauth parseCallback: rejects mismatch/missing-code, tolerates absent state (session-bound CSRF)', () => {
   assert.throws(() => parseCallback(new URLSearchParams('code=C&state=BAD'), 'GOOD'), /state mismatch/i);
   assert.throws(() => parseCallback(new URLSearchParams('error=access_denied&state=GOOD'), 'GOOD'), /denied/i);
+  assert.throws(() => parseCallback(new URLSearchParams('state=GOOD'), 'GOOD'), /no authorization code/i); // missing code rejected
   assert.deepEqual(parseCallback(new URLSearchParams('code=C&state=GOOD'), 'GOOD'), { code: 'C' });
+  // OpenRouter returns only `code` (no state) — accepted, because CSRF is bound to the session:
+  assert.deepEqual(parseCallback(new URLSearchParams('code=C'), 'GOOD'), { code: 'C' });
 });
 
 test('oauth complete: exchanges code -> verifies key -> stores connected service; never returns the raw key', async () => {

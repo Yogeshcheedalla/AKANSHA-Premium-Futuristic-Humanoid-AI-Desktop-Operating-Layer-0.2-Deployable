@@ -13,17 +13,25 @@ test('pkce: verifier is URL-safe and state matches exactly', () => {
   assert.equal(pkce.stateMatches('abc', 'abc'), true);
   assert.equal(pkce.stateMatches('abc', 'abd'), false);
 });
-test('authorize url carries PKCE + state + S256', () => {
-  const url = buildAuthorizeUrl({ clientId: 'cid', redirectUri: 'http://127.0.0.1/cb', state: 'S', codeChallenge: 'CH' });
-  assert.ok(url.includes('code_challenge=CH') && url.includes('code_challenge_method=S256') && url.includes('state=S'));
+test('authorize url uses OpenRouter PKCE shape: callback_url + challenge + S256 (no client_id)', () => {
+  const url = buildAuthorizeUrl({ redirectUri: 'https://app.example/api/ai/online/callback', state: 'S', codeChallenge: 'CH', keyLabel: 'Akansha' });
+  assert.ok(url.includes('https://openrouter.ai/auth'), 'must point at OpenRouter /auth');
+  assert.ok(url.includes('callback_url=') && url.includes(encodeURIComponent('/api/ai/online/callback')) || url.includes('callback_url='), 'must carry callback_url');
+  assert.ok(url.includes('code_challenge=CH') && url.includes('code_challenge_method=S256'), 'must carry PKCE challenge + S256');
+  assert.ok(!/[?&]client_id=/.test(url), 'must NOT include a client_id when none is configured');
+  assert.ok(url.includes('key_label=Akansha'), 'optional key_label forwarded');
 });
-test('authorize url REQUIRES a client_id (never fabricated)', () => {
-  assert.throws(() => buildAuthorizeUrl({ clientId: '', redirectUri: 'x', state: 'S', codeChallenge: 'C' } as any));
+test('authorize url REQUIRES a callback_url but NOT a client_id (never invented)', () => {
+  // Missing callback_url is the only hard requirement now.
+  assert.throws(() => buildAuthorizeUrl({ redirectUri: '', codeChallenge: 'C' } as any));
+  // A real client_id, if configured, is forwarded — but is optional.
+  const withCid = buildAuthorizeUrl({ redirectUri: 'https://x/cb', codeChallenge: 'C', clientId: 'real-cid' });
+  assert.ok(withCid.includes('client_id=real-cid'));
 });
 
 /* ── verifyKey: uses the AUTHENTICATED /key, not public /models ───────────── */
-function mockFetch(handler: (url: string) => any): typeof fetch {
-  const f = async (url: any) => handler(String(url));
+function mockFetch(handler: (url: string, init?: any) => any): typeof fetch {
+  const f = async (url: any, init?: any) => handler(String(url), init);
   return f as unknown as typeof fetch;
 }
 const okJson = (body: any) => ({ ok: true, status: 200, json: async () => body });
@@ -57,10 +65,16 @@ test('verifyKey: malformed key short-circuits before any network', async () => {
 });
 
 /* ── code exchange ───────────────────────────────────────────────────────── */
-test('exchange: returns the key once on success, throws otherwise', async () => {
-  const good = await exchangeCodeForApiKey({ code: 'C', codeVerifier: 'V', fetcher: mockFetch(() => okJson({ key: 'sk-or-result', user_id: 7 })) });
+test('exchange: correct endpoint + body (code, code_verifier, code_challenge_method=S256); returns key once', async () => {
+  let seenUrl = ''; let seenBody: any;
+  const good = await exchangeCodeForApiKey({
+    code: 'C', codeVerifier: 'V',
+    fetcher: mockFetch((u, init) => { seenUrl = u; seenBody = JSON.parse(init.body); return okJson({ key: 'sk-or-result', user_id: 7 }); }),
+  });
   assert.equal(good.key, 'sk-or-result');
   assert.equal(good.userId, 7);
+  assert.ok(seenUrl.endsWith('/api/v1/auth/keys'), 'exchanges at POST /api/v1/auth/keys');
+  assert.deepEqual(seenBody, { code: 'C', code_verifier: 'V', code_challenge_method: 'S256' }, 'body carries PKCE verifier + method, no invented fields');
   await assert.rejects(() => exchangeCodeForApiKey({ code: 'C', codeVerifier: 'V', fetcher: mockFetch(() => statusOnly(400)) }));
 });
 

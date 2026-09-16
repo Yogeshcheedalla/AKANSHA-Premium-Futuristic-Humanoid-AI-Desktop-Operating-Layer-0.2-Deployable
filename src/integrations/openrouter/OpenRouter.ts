@@ -11,8 +11,9 @@
  *     resolved here are for the Node server only; they never reach the renderer,
  *     logs, or a model prompt.
  *
- * Live browser OAuth still requires a registered client_id (supplied by config,
- * never invented here) — without it the OAuth boundary stays honest/BLOCKED.
+ * Live browser OAuth does NOT need a client_id — the current OpenRouter PKCE
+ * docs require only a callback URL. The user signs in / signs up on OpenRouter's
+ * own page; Akansha never handles the password and never invents an identifier.
  */
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -41,20 +42,28 @@ export const pkce = {
   },
 };
 
-/** Build the browser-authorize URL. Requires a real clientId — never invented. */
+/**
+ * Build OpenRouter's browser-authorize URL.
+ *
+ * Per the current official OAuth PKCE docs, /auth requires ONLY `callback_url`
+ * and accepts `code_challenge` + `code_challenge_method` (+ optional `key_label`).
+ * There is NO mandatory `client_id` — Akansha must NOT invent one. An `clientId`
+ * is added ONLY if a real one is supplied by config; `state` is forwarded so a
+ * CSRF check still works if the provider echoes it back, but the flow does not
+ * depend on that (the callback also binds to the caller's authenticated session).
+ */
 export function buildAuthorizeUrl(opts: {
-  clientId: string; redirectUri: string; state: string; codeChallenge: string;
-  codeChallengeMethod?: 'S256' | 'plain'; scope?: string; authorizeUrl?: string;
+  redirectUri: string; codeChallenge: string; state?: string;
+  codeChallengeMethod?: 'S256' | 'plain'; keyLabel?: string; clientId?: string; authorizeUrl?: string;
 }): string {
-  if (!opts.clientId) throw new Error('OpenRouter client_id is required (configure it; never fabricated)');
+  if (!opts.redirectUri) throw new Error('OpenRouter callback_url is required (derived from the public URL / configured redirect)');
   const u = new URL(opts.authorizeUrl || `${OPENROUTER.authBase}/auth`);
-  u.searchParams.set('response_type', 'code');
-  u.searchParams.set('client_id', opts.clientId);
-  u.searchParams.set('redirect_uri', opts.redirectUri);
-  u.searchParams.set('scope', opts.scope || 'model:read');
-  u.searchParams.set('state', opts.state);
+  u.searchParams.set('callback_url', opts.redirectUri);
   u.searchParams.set('code_challenge', opts.codeChallenge);
   u.searchParams.set('code_challenge_method', opts.codeChallengeMethod || 'S256');
+  if (opts.keyLabel) u.searchParams.set('key_label', opts.keyLabel);
+  if (opts.state) u.searchParams.set('state', opts.state);
+  if (opts.clientId) u.searchParams.set('client_id', opts.clientId); // only if a real one is configured; never fabricated
   return u.toString();
 }
 
@@ -84,7 +93,7 @@ export async function verifyKey(key: string, fetcher: typeof fetch = globalThis.
   }
 }
 
-/** Exchange an OAuth code for an API key (authenticated POST). */
+/** Exchange an OAuth code for the user's own API key (PKCE; no client_id). */
 export async function exchangeCodeForApiKey(opts: {
   code: string; codeVerifier: string; fetcher?: typeof fetch;
 }): Promise<{ key: string; userId?: number | null }> {
@@ -92,7 +101,7 @@ export async function exchangeCodeForApiKey(opts: {
   const res = await fetcher(`${OPENROUTER.authBase}/api/v1/auth/keys`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: opts.code, code_verifier: opts.codeVerifier }),
+    body: JSON.stringify({ code: opts.code, code_verifier: opts.codeVerifier, code_challenge_method: 'S256' }),
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`OpenRouter code exchange failed: HTTP ${res.status}`);

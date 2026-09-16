@@ -76,7 +76,7 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
 
   const online =
     deps.openrouter.connected && deps.openrouter.verified ? 'ONLINE AI READY'
-      : deps.openrouter.configured === false ? 'OPENROUTER NOT CONFIGURED (no client_id)'
+      : deps.openrouter.configured === false ? 'OPENROUTER NOT CONFIGURED (no callback URL)'
       : 'CONNECT OPENROUTER TO ENABLE ONLINE AI';
 
   return {

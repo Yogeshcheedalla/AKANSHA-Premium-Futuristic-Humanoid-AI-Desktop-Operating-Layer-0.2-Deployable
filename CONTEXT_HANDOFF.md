@@ -214,6 +214,41 @@ Qwen2.5-1.5B GGUF). Vercel NEVER runs llama.cpp — desktop-only, correctly guar
 - **BLOCKED (unchanged, not faked):** OpenRouter LIVE browser OAuth — needs a real
   registered `AKANSHA_OPENROUTER_CLIENT_ID`; connect returns 501 until then.
 
+## OPENROUTER PKCE CORRECTION — REMOVE THE FALSE CLIENT_ID BLOCKER (this pass)
+The prior "needs a registered client_id / 501" gate was WRONG. Verified against the
+current official OpenRouter OAuth PKCE docs: `/auth` requires ONLY `callback_url`
+(+ `code_challenge`, `code_challenge_method=S256`, optional `key_label`) — **NO
+client_id**; the browser is returned to the callback with only a `code` (state is NOT
+echoed). Code exchange = `POST /api/v1/auth/keys { code, code_verifier,
+code_challenge_method:"S256" }` → `{ key }`; verify via authenticated `GET /api/v1/key`.
+- `OpenRouter.ts buildAuthorizeUrl`: now emits `callback_url`+`code_challenge`+`S256`
+  (+ optional `key_label`/`state`/real `client_id`); throws only when `callback_url`
+  is missing. `exchangeCodeForApiKey` body adds `code_challenge_method:'S256'`.
+- `oauth.ts beginOpenRouterAuth`: `{ redirectUri, keyLabel?, clientId? }` (client_id
+  optional). `parseCallback(query, expectedState?)`: rejects `error`/missing code;
+  validates a returned `state` for mismatch but TOLERATES absent state (OpenRouter
+  doesn't echo it) — CSRF is instead bound to the authenticated session.
+- `openRouterOAuth.ts`: added `resolveOAuthCallback()` precedence
+  `REDIRECT_URI > PUBLIC_URL+/api/ai/online/callback > request origin`;
+  `isOAuthConfigured`/`openRouterOAuthConfig`/`startOpenRouterConnect` no longer need a
+  client_id (only a resolvable callback). New optional env `AKANSHA_OPENROUTER_KEY_LABEL`.
+- `oauthPendingStore`: PKCE txn now ALSO bound to session `sub` via
+  `takeForSub()` (single-use); no verifier in browser/long-term storage.
+- `connect/route.ts`: authenticates, derives origin, stores `{verifier,redirectUri,sub}`,
+  returns a REAL authorize URL (200) instead of 501; 501 only if NO callback resolvable.
+- `callback/route.ts`: authenticates the session, takes the pending txn by `sub`
+  (or by a returned `state` if it belongs to this session), then exchange→`GET /key`
+  →vault. Unauth 401; no/replayed pending 400.
+- LOCAL AI UNTOUCHED and re-verified: `ProviderManager.local.test` 5/5 + full suite green;
+  ModelRouter/LocalGgufProvider/ModelIntegrity/RuntimeProvisioner unchanged.
+- Docs: `AKANSHA_OPENROUTER.md` rewritten (no client_id; callback-only; session-bound
+  CSRF; 501 only for unresolvable callback); README + `.env.example` updated
+  (client_id optional, `AKANSHA_PUBLIC_URL` recommended).
+- Test suites updated/added: OpenRouter.test, oauth.test, openRouterOAuth.test,
+  connect/route.test, callback/route.test (client_id-free URL, missing-code/state
+  mismatch/replay, session-bound single-use, GET /key, accountless). See "QUALITY"
+  for the final counts.
+
 ## FILES CHANGED (this recovery)
 Tracked edits: src/core/models/ModelProvider.ts, src/core/providers/ProviderManager.ts,
 src/integrations/models/ProviderFactory.ts, src/ui/workspaces/CommandWorkspace.tsx.

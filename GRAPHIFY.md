@@ -46,7 +46,7 @@ a second of any of these. External models/providers are adapters, never the brai
 | Risk + Permission gate | core/security/RiskEngine, core/execution/PermissionEngine | EXISTS | audit.test |
 | ModelRouter (cloud+local policy, fallback) | core/models/ModelRouter | EXISTS — `syncLocalProviders()` (in ProviderManager.load) registers the verified local GGUF as `local-llama` ONLY when a runtime is detected + a usable (inference-verified) record exists; inert on Vercel | audit.test; **ProviderManager.local.test 5/5** (inert w/o runtime; inert w/o usable; empty-output not trusted; AVAILABLE when usable; LOCAL_ONLY chain = local only, no cloud fallback) |
 | Providers (Ollama/OpenAI/Gemini/compat) | integrations/models/ProviderFactory | EXISTS | ProviderManager |
-| **OpenRouter + PKCE + verified key check** | integrations/openrouter/OpenRouter + OpenRouterProvider | IMPLEMENTED — "Continue with OpenRouter" auto-redirects to OpenRouter's OWN sign-in/sign-up (Akansha never handles the password); PKCE+CSRF+/key verify+opaque vault | OpenRouter.test; verifyKey hits /key not /models. LIVE OAuth still needs a registered client_id (never invented) |
+| **OpenRouter + PKCE + verified key check** | integrations/openrouter/OpenRouter + OpenRouterProvider | IMPLEMENTED — **client_id NOT required** (OpenRouter's current PKCE flow uses only `callback_url`); "Continue with OpenRouter" builds a real `openrouter.ai/auth?callback_url=…&code_challenge=…&code_challenge_method=S256` redirect to OpenRouter's OWN sign-in/sign-up (Akansha never handles the password); session-bound single-use CSRF + `/key` verify + opaque vault | OpenRouter.test; oauth.test; openRouterOAuth.test; connect/route.test; callback/route.test |
 | **Signed manifest + GGUF + SHA integrity** | core/models/local/ModelIntegrity | IMPLEMENTED (offline) | ModelIntegrity.test 16/16 |
 | **Hardware probe + Offline/Cloud AI mode** | core/runtime/HardwareProbe, core/models/local/LocalModelSelector, core/models/AiMode | IMPLEMENTED | LocalModelSelector.test 7/7, AiMode.test |
 | **Verified local inference provider** | core/models/local/LocalGgufProvider | IMPLEMENTED + **LIVE-VERIFIED END-TO-END** | LocalGgufProvider.test 5/5; **live benchmark via MasterOrchestrator→ModelRouter(LOCAL_ONLY)→LocalGgufProvider→llama.cpp b10964 + signed Qwen2.5-1.5B: 3 runs COMPLETED/verified, ~29–35 tok/s gen + ~117–133 tok/s prompt (llama-reported), wall 3928/3966/4434 ms (cold incl. load); token COUNTS not exposed by llama-cli single-turn → reported NOT AVAILABLE (never estimated). `scripts/live-inference-bench.ts`** |
@@ -62,12 +62,15 @@ No feature is "verified" without evidence. A unit test proves LOGIC, never live
 mic/speaker/inference/OAuth. `NO EVIDENCE = NO SUCCESS`.
 
 ## E. KNOWN BLOCKERS (genuine, not faked)
-- OpenRouter LIVE browser OAuth: needs a registered client_id (never invented). PKCE +
-  code-exchange + /key verify are implemented and unit-tested offline.
-- Local GGUF live inference: needs a detected llama.cpp/Ollama runtime + a real
-  integrity-verified model artifact; in this environment none is detected, so the
-  provider honestly reports UNAVAILABLE/DEGRADED. Never auto-download a large model
-  or execute an unverified binary.
+- OpenRouter LIVE browser OAuth end-to-end COMPLETION: the connect redirect, PKCE,
+  code-exchange, `/key` verify and vault are implemented + unit-tested, and the
+  client_id requirement was REMOVED (OpenRouter's current PKCE flow needs only a
+  callback URL). The only thing not proven here is a human finishing the login on
+  OpenRouter in a live browser — never faked with an invented identifier or an API-key
+  substitute.
+- Local GGUF live inference: **LIVE-VERIFIED** on desktop (see row above); stays
+  honestly inert on Vercel (no runtime → `syncLocalProviders` no-ops). Never
+  auto-download a large model or run an unverified binary; `usable` only after real inference.
 - Acoustic barge-in + true device mic/speaker round-trip: hardware-dependent → BLOCKED.
 
 ## F. COMPACT/CONTINUITY PROTOCOL (do first every new context)

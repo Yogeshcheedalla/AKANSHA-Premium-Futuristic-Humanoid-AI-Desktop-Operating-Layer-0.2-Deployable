@@ -121,7 +121,7 @@ Statuses are truthful: `VERIFIED` (executed + tested), `IMPLEMENTED` (code + tes
 |---|---|---|
 | MasterOrchestrator cognitive loop | Web + Desktop | **VERIFIED** |
 | ModelRouter (cloud providers + fallback) | Web + Desktop | **VERIFIED** |
-| OpenRouter integration (PKCE, CSRF, `/key` verify, opaque vault) | Web + Desktop | **IMPLEMENTED · VERIFIED** · live OAuth **BLOCKED** (needs a registered `client_id`; connect returns honest `501`). See [`AKANSHA_OPENROUTER.md`](./AKANSHA_OPENROUTER.md) |
+| OpenRouter integration (PKCE, session-bound CSRF, `/key` verify, opaque vault) | Web + Desktop | **IMPLEMENTED · VERIFIED** · accountless "Continue with OpenRouter" initiates the real PKCE redirect (no `client_id` needed) |
 | Model integrity (Ed25519 signed catalog → SHA-256 → GGUF validation) | Desktop | **VERIFIED** |
 | Hardware probe (RAM/CPU/arch/GPU-hint/disk/tier) | Desktop | **VERIFIED** |
 | Runtime provisioning (download → SHA → size → extract → binary-exists) | Desktop | **VERIFIED (LIVE)** |
@@ -200,8 +200,9 @@ Copy `.env.example` → `.env.local`. Secrets are **server-only**; never expose 
 |---|---|---|---|
 | `DATABASE_URL` | Postgres (Drizzle) persistence — optional, degrades gracefully | optional | server |
 | `AKANSHA_SECRET` | Credential-vault / session signing secret | recommended | server |
-| `AKANSHA_OPENROUTER_CLIENT_ID` | OpenRouter OAuth PKCE client id | for live OAuth | server |
-| `AKANSHA_OPENROUTER_REDIRECT_URI` | OAuth callback (must match deployed origin) | for live OAuth | server |
+| `AKANSHA_PUBLIC_URL` | Public origin; the OAuth callback derives from it (`…/api/ai/online/callback`) | recommended | server |
+| `AKANSHA_OPENROUTER_REDIRECT_URI` | Optional exact OAuth callback (overrides `AKANSHA_PUBLIC_URL`) | optional | server |
+| `AKANSHA_OPENROUTER_CLIENT_ID` | **Optional only** — OpenRouter's current PKCE flow needs no client_id; forwarded only if you register one | optional | server |
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `EXPLABS_API_KEY` | Provider keys for Online AI | optional | server |
 | `LLAMA_CPP_PATHS` | Where to look for a local `llama.cpp` binary | desktop | server |
 | `AKANSHA_MODEL_CATALOG` / `AKANSHA_CATALOG_PUBKEY(_FILE)` | Signed model catalog + public key | desktop | server |
@@ -224,9 +225,10 @@ vercel --prod # production
 
 In the Vercel dashboard: framework **Next.js**, root **`/`**, install/build from
 `package.json` (`npm install` / `npm run build`). Set the server-only env vars above. To enable
-live OpenRouter OAuth, register an OpenRouter application, set `AKANSHA_OPENROUTER_CLIENT_ID`
-and `AKANSHA_OPENROUTER_REDIRECT_URI` = `https://<your-domain>/api/ai/online/callback`.
-Without a real `client_id`, Online AI honestly reports "not configured".
+live OpenRouter OAuth, set `AKANSHA_PUBLIC_URL` (the callback then resolves to
+`https://<your-domain>/api/ai/online/callback`). No `client_id` is required — OpenRouter's
+current PKCE flow needs only that callback, and the user signs in / signs up on OpenRouter's
+own page. See [`AKANSHA_OPENROUTER.md`](./AKANSHA_OPENROUTER.md).
 
 ---
 
