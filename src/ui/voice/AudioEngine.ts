@@ -145,6 +145,13 @@ export class AudioEngine {
     if (typeof window === 'undefined') return { ok: false, error: 'MICROPHONE_UNAVAILABLE' };
     const caps = this.capabilities();
     if (!caps.mic) { this.transition('ERROR', 'MICROPHONE_UNAVAILABLE'); return { ok: false, error: 'MICROPHONE_UNAVAILABLE' }; }
+    // Idempotent: exactly ONE microphone pipeline. If we already hold a live
+    // stream, do NOT request a second one (this is what prevents duplicate
+    // getUserMedia when both the header control and the Command workspace start).
+    if (this.mediaStream && this.mediaStream.active) {
+      if (this.state === 'ERROR' || this.state === 'STANDBY' || this.state === 'MUTED') this.transition('LISTENING');
+      return { ok: true };
+    }
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
@@ -212,6 +219,23 @@ export class AudioEngine {
   stopListening() {
     if (this.recognition) { try { this.recognition.stop(); } catch {} this.recognition = null; }
     if (this.state !== 'MUTED') this.transition('STANDBY');
+  }
+
+  /**
+   * Full stop for the persistent controller: stop ASR, tear down the VAD timer and
+   * the microphone stream (no leaked tracks), and return to STANDBY. This is what
+   * makes "Stop Listening" actually release the mic — and guarantees a later start()
+   * opens exactly one fresh pipeline.
+   */
+  stop() {
+    if (this.recognition) { try { this.recognition.stop(); } catch {} this.recognition = null; }
+    if (this.vadTimer) { clearInterval(this.vadTimer); this.vadTimer = null; }
+    if (this.mediaStream) { this.mediaStream.getTracks().forEach((t) => t.stop()); this.mediaStream = null; }
+    if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
+    this.analyser = null;
+    if (typeof window !== 'undefined' && this.capabilities().tts) { try { window.speechSynthesis.cancel(); } catch {} }
+    this.speaking = false;
+    this.transition('STANDBY');
   }
 
   // ── Real TTS through the single authoritative path ───────────────────

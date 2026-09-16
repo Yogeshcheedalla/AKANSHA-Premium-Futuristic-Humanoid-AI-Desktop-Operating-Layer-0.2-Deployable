@@ -13,15 +13,14 @@ import { MemoryWorkspace } from '@/ui/workspaces/MemoryWorkspace';
 import { DevOpsWorkspace } from '@/ui/workspaces/DevOpsWorkspace';
 import { SettingsWorkspace } from '@/ui/workspaces/SettingsWorkspace';
 import { IntegrationsWorkspace } from '@/ui/workspaces/IntegrationsWorkspace';
-import { Download, ArrowLeft } from 'lucide-react';
 import { ProvidersWorkspace } from '@/ui/workspaces/ProvidersWorkspace';
 import { ConnectorsWorkspace } from '@/ui/workspaces/ConnectorsWorkspace';
 import { GraphWorkspace } from '@/ui/workspaces/GraphWorkspace';
 import { RepositoriesWorkspace } from '@/ui/workspaces/RepositoriesWorkspace';
-import { AkanshaPresence, type AIState } from '@/ui/assistant/AkanshaPresence';
 import { ModelCenter } from '@/ui/workspaces/ModelCenterWorkspace';
 import { FirstRunOnboarding, ONBOARD_FLAG } from '@/ui/onboarding/FirstRunOnboarding';
-import { Mic, Zap, ShieldCheck, Circle, Activity, Sparkles } from 'lucide-react';
+import { VoiceControl } from '@/ui/voice/VoiceControl';
+import { Zap, Download, ArrowLeft } from 'lucide-react';
 
 /**
  * The PROTECTED Akansha application lives here, NOT at "/".
@@ -35,23 +34,12 @@ import { Mic, Zap, ShieldCheck, Circle, Activity, Sparkles } from 'lucide-react'
  */
 export default function AkanshaAppPage() {
   const [workspace, setWorkspace] = useState('command');
-  const [systemState, setSystemState] = useState<'online' | 'offline' | 'degraded'>('online');
-  const [aiState, setAIState] = useState<AIState>('idle');
-  const [isListening, setIsListening] = useState(false);
-  const [currentMission, setCurrentMission] = useState('No active missions');
-  const [showOverlay, setShowOverlay] = useState(false);
+  const [systemState] = useState<'online' | 'offline' | 'degraded'>('online');
+  const [currentMission] = useState('No active missions');
   const [onboard, setOnboard] = useState(false);
 
   useEffect(() => {
     try { if (!localStorage.getItem(ONBOARD_FLAG)) setOnboard(true); } catch { /* SSR/no-storage: skip */ }
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setAIState('idle');
-      console.log('[AKANSHA] System initialized.');
-    }, 800);
-    return () => clearTimeout(timer);
   }, []);
 
   const renderWorkspace = () => {
@@ -107,31 +95,6 @@ export default function AkanshaAppPage() {
       <NeuralBackground />
 
       <AnimatePresence>
-        {showOverlay && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm flex items-center justify-center"
-            onClick={() => setShowOverlay(false)}
-          >
-            <GlassSurface className="p-8 max-w-lg mx-4 rounded-3xl text-center">
-              <AkanshaPresence state="thinking" />
-              <h2 className="text-xl font-light mt-4">Processing Request</h2>
-              <p className="text-sm text-white/40 mt-2">Akansha is reasoning through your instruction...</p>
-              <div className="mt-4 w-full h-1 rounded-full bg-white/5 overflow-hidden">
-                <motion.div
-                  animate={{ width: ['0%', '100%'] }}
-                  transition={{ duration: 2, ease: 'easeInOut' }}
-                  className="h-full bg-gradient-to-r from-cyan-400/60 to-purple-400/60"
-                />
-              </div>
-            </GlassSurface>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {onboard && <FirstRunOnboarding onDone={() => setOnboard(false)} />}
       </AnimatePresence>
 
@@ -164,23 +127,7 @@ export default function AkanshaAppPage() {
             <Download size={14} />
             <span>Get Akansha</span>
           </a>
-          <button
-            onClick={() => {
-              setAIState('listening');
-              setIsListening(true);
-              setShowOverlay(true);
-              setTimeout(() => {
-                setAIState('idle');
-                setIsListening(false);
-                setShowOverlay(false);
-                setCurrentMission('Executing mission via capability graph...');
-              }, 3000);
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-400/20 text-cyan-300/90 text-xs tracking-wide hover:scale-[1.05] transition-transform"
-          >
-            <Mic size={14} />
-            <span>Voice Command</span>
-          </button>
+          <VoiceControl />
         </div>
       </header>
 
