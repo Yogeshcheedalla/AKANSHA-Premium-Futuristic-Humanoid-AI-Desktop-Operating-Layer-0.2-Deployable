@@ -1,0 +1,98 @@
+/**
+ * LocalModelRegistry — persists which local models are genuinely USABLE, i.e. have
+ * passed integrity (SHA + GGUF) AND a real inference self-test. setupViewModel reads
+ * this so OFFLINE AI readiness reflects real state, and it stays empty until an
+ * actual inference succeeds (a download/signature/GGUF alone never registers usable).
+ *
+ * Storage is an app-controlled JSON (under userData in production, the repo data dir
+ * otherwise) and is intentionally NOT committed.
+ */
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import type { LocalRuntime } from '@/core/models/local/LocalGgufProvider';
+import { runLocalInference } from '@/core/models/local/LocalGgufProvider';
+import { verifyArtifact, type ManifestModelEntry } from '@/core/models/local/ModelIntegrity';
+
+export interface UsableLocalModel {
+  id: string;
+  artifactPath: string;
+  sha256: string;
+  registeredAt: number;
+  benchmark?: { genTps?: number | null; promptTps?: number | null; totalMs?: number; text?: string };
+}
+
+function storePath(): string {
+  return process.env.AKANSHA_HOME
+    ? join(process.env.AKANSHA_HOME, 'data', 'local-model-providers.json')
+    : join(process.cwd(), 'data', 'akansha', 'data', 'local-model-providers.json');
+}
+
+export function readUsable(): UsableLocalModel[] {
+  try {
+    const p = storePath();
+    if (!existsSync(p)) return [];
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    return Array.isArray(j.providers) ? j.providers : Array.isArray(j) ? j : [];
+  } catch { return []; }
+}
+
+export function getUsableLocalModelIds(): string[] {
+  return readUsable().map((m) => m.id);
+}
+
+function writeUsable(list: UsableLocalModel[]): void {
+  const p = storePath();
+  try { mkdirSync(dirname(p), { recursive: true }); } catch { /* ignore */ }
+  writeFileSync(p, JSON.stringify({ updated: Date.now(), providers: list }, null, 2), 'utf8');
+}
+
+export function unregister(id: string): void {
+  writeUsable(readUsable().filter((m) => m.id !== id));
+}
+
+/** Only a passing real inference registers (or re-registers) a model as usable. */
+export function registerUsable(entry: ManifestModelEntry, artifactPath: string, benchmark: UsableLocalModel['benchmark']): UsableLocalModel {
+  const list = readUsable().filter((m) => m.id !== entry.id);
+  const rec: UsableLocalModel = { id: entry.id, artifactPath, sha256: entry.sha256, registeredAt: Date.now(), benchmark };
+  list.push(rec);
+  writeUsable(list);
+  return rec;
+}
+
+/**
+ * End-to-end provisioning of one model into the registry. It downloads (injectable
+ * fetcher), verifies integrity against the signed manifest entry, then runs a REAL
+ * inference self-test. usable is set ONLY on a genuine non-empty generation. On any
+ * integrity/inference failure it un-registers and reports the true failure.
+ */
+export async function provisionAndVerify(opts: {
+  entry: ManifestModelEntry;
+  artifactPath: string;
+  runtime: LocalRuntime;
+  prompt: string;
+  fetchDownload?: (url: string) => Promise<Uint8Array>;
+  maxTokens?: number;
+  timeoutMs?: number;
+}): Promise<{ ok: boolean; usable: boolean; stage: string; reason?: string; benchmark?: UsableLocalModel['benchmark'] }> {
+  const { entry, artifactPath, runtime, prompt } = opts;
+
+  // 1) obtain bytes (download or already-on-disk)
+  let bytes: Uint8Array;
+  try {
+    if (existsSync(artifactPath)) bytes = new Uint8Array(readFileSync(artifactPath));
+    else if (opts.fetchDownload) bytes = await opts.fetchDownload(entry.url);
+    else return { ok: false, usable: false, stage: 'download', reason: 'no artifact and no downloader provided' };
+  } catch (e: any) { return { ok: false, usable: false, stage: 'download', reason: 'fetch-failed:' + (e?.message || e) }; }
+
+  // 2) integrity: SHA-256 + GGUF container against the signed manifest entry
+  const art = verifyArtifact(entry, bytes);
+  if (!art.ok) { unregister(entry.id); return { ok: false, usable: false, stage: 'integrity', reason: art.reasons.join(', ') }; }
+
+  // 3) REAL inference self-test through the detected runtime
+  const infer = await runLocalInference(runtime, artifactPath, prompt, { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs });
+  if (!infer.ok || !infer.text.trim()) { unregister(entry.id); return { ok: false, usable: false, stage: 'inference', reason: infer.reason || 'no output' }; }
+
+  // 4) usable ONLY now; record the measured benchmark (prompt/gen t/s are measured)
+  const rec = registerUsable(entry, artifactPath, { genTps: infer.genTps ?? null, totalMs: infer.totalMs, text: infer.text.slice(0, 200) });
+  return { ok: true, usable: true, stage: 'ready', benchmark: rec.benchmark };
+}

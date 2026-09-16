@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { buildFixtureCatalog } from '@/core/catalog/fixtureCatalog';
-import { loadSignedCatalog, fixtureAllowed } from '@/core/catalog/catalogProvider';
+import { loadSignedCatalog, fixtureAllowed, loadCatalogForApp } from '@/core/catalog/catalogProvider';
 import { sha256Hex } from '@/core/models/local/ModelIntegrity';
 import { validateSignedCatalog, toManifestEntry } from '@/core/catalog/ModelCatalog';
 import { initialPipelineState, recordIntegrity, recordInference } from '@/core/catalog/ModelManager';
@@ -143,4 +143,14 @@ test('14 model cards come from the catalog, not hard-coded (count follows input)
 test('15 chosen mode reflected in the view model recommendation logic', () => {
   const offline = decideAiMode({ mode: 'both', hardware: hw(), catalog: fx.signed.catalog.models.map(toManifestEntry), usableLocalIds: ['fixture-qwen-1.5b'] });
   assert.equal(offline.mode, 'offline'); // both prefers verified local
+});
+
+/* 16. bundled signed PRODUCTION catalog verifies + is not a fixture */
+test('16 loadCatalogForApp picks up the bundled signed production catalog (real signature)', () => {
+  const r = loadCatalogForApp({} as unknown as NodeJS.ProcessEnv);   // no env override -> bundled
+  assert.equal(r.status, 'ready', JSON.stringify(r.reasons));
+  assert.ok(r.models.length >= 1);
+  const q = r.models.find((m) => m.id.includes('qwen2.5-1.5b'));
+  assert.ok(q, 'production qwen entry present');
+  assert.match(q!.sha256, /^[a-f0-9]{64}$/);
 });

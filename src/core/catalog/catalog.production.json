@@ -1,0 +1,63 @@
+{
+  "catalog": {
+    "schema": "akansha/model-catalog/1",
+    "version": 1,
+    "issuedAt": 1789552344649,
+    "environment": "production",
+    "fixture": false,
+    "models": [
+      {
+        "id": "qwen2.5-1.5b-instruct-q4_k_m",
+        "family": "qwen",
+        "version": "2.5",
+        "parameters": "1.5B",
+        "quantization": "Q4_K_M",
+        "format": "gguf",
+        "downloadSizeBytes": 1117320736,
+        "installedSizeBytes": 1117320736,
+        "minimumRamGB": 4,
+        "recommendedRamGB": 6,
+        "minimumStorageGB": 3,
+        "accelerationSupport": [
+          "cpu",
+          "cuda",
+          "metal",
+          "vulkan"
+        ],
+        "platforms": [
+          "win32",
+          "darwin",
+          "linux"
+        ],
+        "architecture": [
+          "x64",
+          "arm64"
+        ],
+        "runtimeRequirement": "llama.cpp",
+        "contextLength": 32768,
+        "capabilities": [
+          "chat",
+          "coding"
+        ],
+        "quality": {
+          "chat": "Good",
+          "reasoning": "Medium",
+          "coding": "Good"
+        },
+        "internetRequired": false,
+        "benchmark": {
+          "source": "estimated",
+          "generationTokensPerSec": 25,
+          "memoryGB": 3.5
+        },
+        "bestFor": "Everyday offline assistant",
+        "drawbacks": "Smaller model; weaker reasoning/coding than large cloud models",
+        "license": "apache-2.0",
+        "sourceUrl": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+        "signature": "UV3lOisi9hUjhqVBu+hDrTTXJfpmlh3rIbC4t7GQL4oYiJir17IDl/Tni2GSyg+NfKkojBdvZboFkxKE+Ht8Bw=="
+      }
+    ]
+  },
+  "signatureBase64": "OL51Uz69nsMIkxd0DlkrSScqaOTOUgG4K9SGhbEMULK6YeRx7zuH/IyOLU+V9lA1LdMQ6kkQdIt8FbAELDRmCg=="
+}

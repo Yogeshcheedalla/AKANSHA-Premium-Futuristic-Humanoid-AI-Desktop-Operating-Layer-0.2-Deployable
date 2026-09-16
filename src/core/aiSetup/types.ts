@@ -28,7 +28,7 @@ export interface SetupViewModel {
   runtime: { available: boolean; name: string; version?: string; supportsAcceleration: string[] };
   catalog: { status: CatalogStatus; reasons: string[]; fixture: boolean; models: ModelCardVM[] };
   aiMode: { recommended: 'offline' | 'cloud'; offlineReady: boolean; reason: string };
-  online: { provider: string; connected: boolean; verified: boolean; label?: string | null };
+  online: { provider: string; connected: boolean; verified: boolean; configured: boolean; label?: string | null };
   readiness: { offline: string; online: string };
 }
 

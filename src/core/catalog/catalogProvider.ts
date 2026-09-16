@@ -15,8 +15,12 @@
  *   - A fixture NEVER becomes usable — usable is gated elsewhere on real inference.
  */
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { validateSignedCatalog, type CatalogModel, type SignedCatalog } from '@/core/catalog/ModelCatalog';
 import { buildFixtureCatalog } from '@/core/catalog/fixtureCatalog';
+
+const HERE = typeof import.meta !== 'undefined' ? dirname(fileURLToPath(import.meta.url)) : process.cwd();
 
 export type CatalogStatus = 'ready' | 'fixture' | 'not-configured' | 'invalid';
 export interface CatalogResult { status: CatalogStatus; models: CatalogModel[]; reasons: string[] }
@@ -68,4 +72,26 @@ export function loadSignedCatalog(
   }
 
   return { status: 'not-configured', models: [], reasons: ['no signed catalog + public key configured'] };
+}
+
+/**
+ * App-facing loader: uses the configured signed catalog if present, else falls back
+ * to Akansha's BUNDLED signed production catalog (shipped + verified against the
+ * bundled public key). If neither verifies it reports honestly. This keeps
+ * loadSignedCatalog (env-only) pure for tests while production/dev ship real, signed
+ * model metadata out of the box — still never a hard-coded list.
+ */
+export function loadCatalogForApp(env: NodeJS.ProcessEnv = process.env, now = Date.now()): CatalogResult {
+  const explicit = loadSignedCatalog(env, now);
+  if (explicit.status !== 'not-configured') return explicit;
+  try {
+    const catRaw = readFileSync(join(HERE, 'catalog.production.json'), 'utf8');
+    const pub = readFileSync(join(HERE, 'keys', 'catalog.pub.pem'), 'utf8');
+    const signed = JSON.parse(catRaw) as SignedCatalog;
+    if (signed.catalog?.fixture === true && !fixtureAllowed(env)) return { status: 'not-configured', models: [], reasons: ['no signed catalog configured'] };
+    const v = validateSignedCatalog(signed, pub, now);
+    return v.ok ? { status: 'ready', models: v.models, reasons: [] } : { status: 'invalid', models: [], reasons: v.reasons };
+  } catch {
+    return { status: 'not-configured', models: [], reasons: ['no signed catalog configured'] };
+  }
 }

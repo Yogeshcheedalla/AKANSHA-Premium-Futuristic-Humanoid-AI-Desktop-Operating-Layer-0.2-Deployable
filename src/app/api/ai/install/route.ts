@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorize } from '@/core/auth/guard';
 import { detectHardware } from '@/core/runtime/HardwareProbe';
-import { loadSignedCatalog } from '@/core/catalog/catalogProvider';
+import { loadCatalogForApp } from '@/core/catalog/catalogProvider';
 import { detectRuntimes, runtimeFor } from '@/core/runtime/RuntimeManager';
 import { evaluate } from '@/core/catalog/CompatibilityEngine';
 import { toManifestEntry } from '@/core/catalog/ModelCatalog';
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const modelId = String(body?.modelId || '');
-    const catalog = loadSignedCatalog(process.env);
+    const catalog = loadCatalogForApp(process.env);
     if (catalog.status !== 'ready') {
       return NextResponse.json({ ok: false, stage: 'idle', blocked: `MODEL CATALOG ${catalog.status.toUpperCase()}`, reasons: catalog.reasons });
     }

@@ -43,6 +43,9 @@ packaged/
 *.secrets
 credentials.json
 secrets/
+# ...but the PUBLIC catalog verification key is intentionally committed (the private
+# half lives only under gitignored .akansha-keys/). Verification needs the public key.
+!src/core/catalog/keys/catalog.pub.pem
 .sops.yaml
 .decrypted*
 
@@ -161,3 +164,6 @@ recordings/
 .next-orphans/
 release/
 release/*.log
+
+# Akansha signing private keys — NEVER commit
+.akansha-keys/

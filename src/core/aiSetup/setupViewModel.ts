@@ -14,10 +14,12 @@
 import { detectHardware, type HardwareProfile } from '@/core/runtime/HardwareProbe';
 import { detectRuntimes, runtimeFor } from '@/core/runtime/RuntimeManager';
 import { evaluate } from '@/core/catalog/CompatibilityEngine';
-import { loadSignedCatalog, type CatalogResult } from '@/core/catalog/catalogProvider';
+import { loadCatalogForApp, type CatalogResult } from '@/core/catalog/catalogProvider';
 import { decideAiMode } from '@/core/models/AiMode';
 import { toManifestEntry, type CatalogModel } from '@/core/catalog/ModelCatalog';
 import { connectedServices as defaultConnected, type ConnectedServices } from '@/core/identity/ConnectedServices';
+import { isOAuthConfigured } from '@/core/identity/openRouterOAuth';
+import { getUsableLocalModelIds as getUsableLocalIds } from '@/core/models/local/LocalModelRegistry';
 import type { ManifestModelEntry } from '@/core/models/local/ModelIntegrity';
 import type { SetupViewModel, ModelCardVM, CatalogStatus } from './types';
 
@@ -29,7 +31,7 @@ export interface SetupDeps {
   catalog: CatalogResult;
   runtime: { available: boolean; name: string; supportsAcceleration: string[]; version?: string };
   usableLocalIds: string[];
-  openrouter: { connected: boolean; verified: boolean; label?: string | null };
+  openrouter: { connected: boolean; verified: boolean; configured?: boolean; label?: string | null };
 }
 
 function card(model: CatalogModel, deps: SetupDeps): ModelCardVM {
@@ -72,7 +74,10 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
     offline = `FIXTURE (DEV ONLY): ${offline}`;
   }
 
-  const online = deps.openrouter.connected && deps.openrouter.verified ? 'ONLINE AI READY' : 'OPENROUTER CONNECTION NOT CONFIGURED';
+  const online =
+    deps.openrouter.connected && deps.openrouter.verified ? 'ONLINE AI READY'
+      : deps.openrouter.configured === false ? 'OPENROUTER NOT CONFIGURED (no client_id)'
+      : 'CONNECT OPENROUTER TO ENABLE ONLINE AI';
 
   return {
     device: {
@@ -88,7 +93,7 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
       models: deps.catalog.models.map((m) => card(m, deps)),
     },
     aiMode: { recommended: mode.mode, offlineReady, reason: mode.reason },
-    online: { provider: 'openrouter', connected: deps.openrouter.connected, verified: deps.openrouter.verified, label: deps.openrouter.label ?? null },
+    online: { provider: 'openrouter', connected: deps.openrouter.connected, verified: deps.openrouter.verified, configured: deps.openrouter.configured ?? true, label: deps.openrouter.label ?? null },
     readiness: { offline, online },
   };
 }
@@ -96,17 +101,17 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
 /** Production gatherer — reads the REAL device/runtime/catalog/connection state. */
 export function getSetupViewModel(cs: ConnectedServices = defaultConnected, env = process.env): SetupViewModel {
   const hardware = detectHardware({});
-  const catalog = loadSignedCatalog(env);
+  const catalog = loadCatalogForApp(env);
   const runtimes = detectRuntimes(env.LLAMA_CPP_PATHS ? { 'llama.cpp': env.LLAMA_CPP_PATHS.split(',') } : {});
   const rt = runtimeFor(runtimes.find((r) => r.adapter.name === 'llama.cpp'));
   const orList = cs.list().find((s) => s.provider === 'openrouter');
-  // usableLocalIds: models that have genuinely passed integrity + inference. There is
-  // no such registry yet, so offline honestly stays not-ready. Never fabricated.
-  const usableLocalIds: string[] = [];
+  // usableLocalIds: models that genuinely passed integrity AND a real inference
+  // self-test (LocalModelRegistry). Empty until that actually happens — never faked.
+  const usableLocalIds = getUsableLocalIds();
   return buildSetupViewModel({
     hardware, catalog,
     runtime: { available: rt.available, name: rt.name, supportsAcceleration: rt.supportsAcceleration, version: rt.version },
     usableLocalIds,
-    openrouter: { connected: !!orList?.connected, verified: !!orList?.verified, label: orList?.label ?? null },
+    openrouter: { connected: !!orList?.connected, verified: !!orList?.verified, configured: isOAuthConfigured(env), label: orList?.label ?? null },
   });
 }

@@ -101,6 +101,38 @@ downloading a real model. Development-only; NEVER production; never fakes usable
   GET → catalog 'not-configured', fixture:false, 0 models.
 - Tests 119/119 (was 105; +14 fixture), tsc 0, next build 0, eslint clean.
 
+## REAL PROVISIONING + OFFLINE AI READY (LIVE) — 2026-09-16, HEAD 229c518 → this
+Upgraded the fixture-only story to genuine, live-verified local inference, all wired
+into the EXISTING ModelRouter (no 2nd router). Live on this Windows machine:
+- `src/core/runtime/RuntimeProvisioner.ts` — real download→SHA-256→size→extract→
+  binary-exists gate. LIVE: downloaded llama.cpp b10964 (18,427,629 B, computed
+  SHA-256 `917f39c0…`), extracted via PowerShell, `llama-cli --version` ran. Tests use
+  injected fetch/extract (offline) + `binary-not-found` guard.
+- `src/core/models/local/LocalModelRegistry.ts` — persists genuinely-usable models;
+  `provisionAndVerify()` = integrity(SHA+GGUF) → REAL llama-cli inference → benchmark
+  → `usable=true` ONLY on non-empty generated text; a download/signature alone never
+  flips usable. setupViewModel reads `getUsableLocalModelIds()` so OFFLINE readiness is
+  real state.
+- Signed PRODUCTION catalog `src/core/catalog/catalog.production.json` + bundled
+  `keys/catalog.pub.pem`; entry = real qwen2.5-1.5b (url, size 1,117,320,736,
+  SHA-256 `6a1a2eb6…`, Ed25519-signed, environment:production, fixture:false, estimated
+  benchmark). `loadCatalogForApp` falls back to the bundled signed catalog (still
+  verifies signature; fixture never auto-loads in production). **The Ed25519 PRIVATE
+  key lives in `.akansha-keys/` which is gitignored — only the public key + signed json
+  are committed.** Model .gguf + runtime binaries are never committed.
+- OpenRouter OAuth wired: env `AKANSHA_OPENROUTER_CLIENT_ID`/redirect → PKCE
+  `/api/ai/online/connect` (authorize URL, state) + `/api/ai/online/callback`
+  (CSRF state check → code exchange → authenticated GET /key verify → store opaque
+  credential). Never invents a client_id; LIVE browser OAuth is BLOCKED until the user
+  supplies a registered client_id.
+- **LIVE e2e proof**: provisionAndVerify against the real runtime + signed model →
+  generated text (~30 t/s) → usable → `getSetupViewModel()` reported
+  **OFFLINE AI READY** (runtime llama.cpp, usable qwen2.5-1.5b-instruct-q4_k_m).
+- Tests 134/134 (was 119; +provision pipeline +oauth config +bundled catalog), tsc 0,
+  next build 0, eslint 0. Desktop `C:\Users\LENOVO\Desktop\Akansha-source` READ-ONLY:
+  its qwen .gguf was used only as a read-only artifact for the live inference test;
+  nothing in that repo was modified.
+
 ## PRODUCTION ARCHITECTURE LAYER (2026-09-16, HEAD 448ecf8 → this)
 Offline, tested extensions of the SAME architecture (no 2nd orchestrator/router/TTS):
 - `src/core/catalog/ModelCatalog.ts` — rich SIGNED catalog contract (family/version/

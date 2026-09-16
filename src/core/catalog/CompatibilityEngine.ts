@@ -66,14 +66,15 @@ export function evaluate(model: CatalogModel, hw: HardwareProfile, runtime: Runt
   let performanceLabel: CompatibilityResult['performanceLabel'] = 'Unknown';
   let estimatedTokensPerSec: number | undefined;
   let memoryGB: number | undefined;
-  if (model.benchmark.source === 'measured' && (model.benchmark.generationTokensPerSec ?? model.benchmark.promptTokensPerSec)) {
+  const bm = model.benchmark || ({ source: 'estimated' } as CatalogModel['benchmark']);
+  if (bm.source === 'measured' && (bm.generationTokensPerSec ?? bm.promptTokensPerSec)) {
     performanceLabel = 'Measured';
-    estimatedTokensPerSec = model.benchmark.generationTokensPerSec ?? model.benchmark.promptTokensPerSec;
-    memoryGB = model.benchmark.memoryGB;
-  } else if (model.benchmark.generationTokensPerSec ?? model.benchmark.promptTokensPerSec) {
+    estimatedTokensPerSec = bm.generationTokensPerSec ?? bm.promptTokensPerSec;
+    memoryGB = bm.memoryGB;
+  } else if (bm.generationTokensPerSec ?? bm.promptTokensPerSec) {
     performanceLabel = 'Estimated'; // values exist but were not measured on THIS device
-    estimatedTokensPerSec = model.benchmark.generationTokensPerSec ?? model.benchmark.promptTokensPerSec;
-    memoryGB = model.benchmark.memoryGB;
+    estimatedTokensPerSec = bm.generationTokensPerSec ?? bm.promptTokensPerSec;
+    memoryGB = bm.memoryGB;
   }
 
   if (!runnable) {

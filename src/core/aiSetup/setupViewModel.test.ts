@@ -68,11 +68,20 @@ const baseDeps = (over: Partial<SetupDeps> = {}): SetupDeps => ({
   usableLocalIds: [], openrouter: { connected: false, verified: false, label: null }, ...over,
 });
 
-test('setup vm: no runtime => LOCAL RUNTIME NOT DETECTED, offline not ready, cloud not ready', () => {
+test('setup vm: no runtime => LOCAL RUNTIME NOT DETECTED, offline not ready', () => {
   const vm = buildSetupViewModel(baseDeps());
   assert.equal(vm.readiness.offline, 'LOCAL RUNTIME NOT DETECTED');
   assert.equal(vm.aiMode.offlineReady, false);
-  assert.match(vm.readiness.online, /NOT CONFIGURED/);
+  // online is honestly NOT ready (not the READY string)
+  assert.notEqual(vm.readiness.online, 'ONLINE AI READY');
+});
+
+test('setup vm: distinguishes OAuth not-configured vs configured-but-not-connected', () => {
+  const notConfigured = buildSetupViewModel(baseDeps({ openrouter: { connected: false, verified: false, configured: false, label: null } }));
+  assert.match(notConfigured.readiness.online, /NOT CONFIGURED/);
+  assert.equal(notConfigured.online.configured, false);
+  const configuredNotConnected = buildSetupViewModel(baseDeps({ openrouter: { connected: false, verified: false, configured: true, label: null } }));
+  assert.equal(configuredNotConnected.readiness.online, 'CONNECT OPENROUTER TO ENABLE ONLINE AI');
 });
 
 test('setup vm: catalog not configured => no cards, honest status (no hard-coded models)', () => {
