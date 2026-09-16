@@ -1,7 +1,7 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Loader2, ExternalLink, ShieldAlert, Boxes, GitBranch, AlertOctagon, CheckCircle2, Clock, Layers } from 'lucide-react';
+import { Loader2, ExternalLink, ShieldAlert, Boxes, GitBranch, AlertOctagon, CheckCircle2, Clock, Layers, RotateCcw } from 'lucide-react';
 
 interface Repo {
   id: string; slug: string; url: string; name: string; description: string;
@@ -45,15 +45,52 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 export const RepositoriesWorkspace = () => {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'layers' | 'pipeline' | 'escalation' | 'security'>('layers');
   const [open, setOpen] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch('/api/repositories').then((r) => r.json()).then((d) => { if (d.ok) setData(d); }).finally(() => setLoading(false));
+  const load = useCallback(() => {
+    const ctrl = new AbortController();
+    // Hard timeout so this can NEVER spin forever (the old code only cleared on a
+    // successful d.ok response, so any 401/500/non-ok/rejected fetch hung here).
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    fetch('/api/repositories', { signal: ctrl.signal, credentials: 'same-origin' })
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({} as any));
+        if (!r.ok || !d || d.ok !== true) {
+          throw new Error(d?.error || (r.status === 401 ? 'Authentication required' : `Request failed (HTTP ${r.status})`));
+        }
+        return d as Data & { ok: true };
+      })
+      .then((d) => setData(d))
+      .catch((e: any) => setError(e?.name === 'AbortError' ? 'Timed out after 12s — the repository service did not respond in time.' : (e?.message || 'Failed to load the repository fabric.')))
+      .finally(() => { clearTimeout(timer); setLoading(false); });
+    return () => { clearTimeout(timer); ctrl.abort(); };
   }, []);
 
-  if (loading || !data) {
+  const retry = useCallback(() => { setLoading(true); setError(null); load(); }, [load]);
+
+  useEffect(() => load(), [load]);
+
+  if (loading && !data) {
     return <div className="p-8 flex items-center justify-center gap-2 text-white/30 text-sm"><Loader2 size={14} className="animate-spin" /> Mapping repository fabric…</div>;
+  }
+
+  if (!data) {
+    return (
+      <div className="p-8 max-w-xl mx-auto">
+        <GlassSurface className="p-8 rounded-2xl">
+          <div className="flex items-center gap-2 text-rose-300 mb-3"><AlertOctagon size={16} /><h2 className="text-lg font-light">Could not map the repository fabric</h2></div>
+          <p className="text-sm text-white/45 mb-6">{error || 'Unknown error.'}</p>
+          <div className="flex items-center gap-3">
+            <button onClick={retry} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs hover:bg-cyan-500/25 transition-colors">
+              <RotateCcw size={13} /> Retry
+            </button>
+            <a href="/app" className="text-[11px] text-white/35 hover:text-white/60">Back to Command</a>
+          </div>
+        </GlassSurface>
+      </div>
+    );
   }
 
   return (

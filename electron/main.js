@@ -163,7 +163,9 @@ function waitForHealthy(attempt = 0) {
 }
 
 function frontendUrl() {
-  return `http://127.0.0.1:${serverPort}/`;
+  // The desktop shell loads the authenticated Akansha APPLICATION (/app), not the
+  // public landing page (now served at "/"). The local runtime + llama.cpp stay here.
+  return `http://127.0.0.1:${serverPort}/app`;
 }
 
 function loadFrontend() {

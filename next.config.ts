@@ -6,6 +6,19 @@ const nextConfig: NextConfig = {
   // a hashed specifier that fails to resolve once the app is relocated into a
   // packaged (Electron) tree, causing every DB-backed route to 500.
   serverExternalPackages: ["pg", "pg-cloudflare", "@modelcontextprotocol/sdk"],
+
+  // STRICT PUBLIC/APP BOUNDARY.
+  // "/" serves the lightweight, fully static public landing page
+  // (public/landing.html) — it never boots the dashboard, never mounts the AI
+  // workspaces, and therefore never fires repository mapping, model discovery,
+  // voice or local-runtime init. The application lives under "/app". This is a
+  // web/deployment boundary only; the Electron desktop shell loads "/app"
+  // directly and keeps the local llama.cpp runtime.
+  async rewrites() {
+    return {
+      beforeFiles: [{ source: "/", destination: "/landing.html" }],
+    };
+  },
 };
 
 export default nextConfig;
