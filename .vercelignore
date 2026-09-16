@@ -1,0 +1,18 @@
+# Vercel upload exclusions (defense-in-depth for local CLI uploads).
+# A Git-connected build already excludes these via .gitignore, but this makes the
+# web bundle lean and guarantees huge desktop-only artifacts never reach Vercel.
+release/
+data/
+.akansha-keys/
+model-cache/
+*.gguf
+*.bin
+*.safetensors
+*.exe
+*.dmg
+*.msi
+*.AppImage
+*.7z
+next-orphans/
+*.log
+coverage/
