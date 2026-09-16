@@ -19,6 +19,8 @@ import { ConnectorsWorkspace } from '../ui/workspaces/ConnectorsWorkspace';
 import { GraphWorkspace } from '../ui/workspaces/GraphWorkspace';
 import { RepositoriesWorkspace } from '../ui/workspaces/RepositoriesWorkspace';
 import { AkanshaPresence, type AIState } from '../ui/assistant/AkanshaPresence';
+import { ModelCenter } from '../ui/workspaces/ModelCenterWorkspace';
+import { FirstRunOnboarding, ONBOARD_FLAG } from '../ui/onboarding/FirstRunOnboarding';
 import { Mic, Zap, ShieldCheck, Circle, Activity, Sparkles } from 'lucide-react';
 
 export default function AkanshaPage() {
@@ -28,6 +30,11 @@ export default function AkanshaPage() {
   const [isListening, setIsListening] = useState(false);
   const [currentMission, setCurrentMission] = useState('No active missions');
   const [showOverlay, setShowOverlay] = useState(false);
+  const [onboard, setOnboard] = useState(false);
+
+  useEffect(() => {
+    try { if (!localStorage.getItem(ONBOARD_FLAG)) setOnboard(true); } catch { /* SSR/no-storage: skip */ }
+  }, []);
 
   useEffect(() => {
     // Startup sequence simulation
@@ -48,6 +55,7 @@ export default function AkanshaPage() {
       case 'agents': return <AgentsWorkspace />;
       case 'integrations': return <IntegrationsWorkspace />;
       case 'providers': return <ProvidersWorkspace />;
+      case 'modelcenter': return <ModelCenter />;
       case 'connectors': return <ConnectorsWorkspace />;
       case 'memory': return <MemoryWorkspace />;
       case 'devops': return <DevOpsWorkspace />;
@@ -115,6 +123,11 @@ export default function AkanshaPage() {
         )}
       </AnimatePresence>
       
+      {/* First-run onboarding (once) */}
+      <AnimatePresence>
+        {onboard && <FirstRunOnboarding onDone={() => setOnboard(false)} />}
+      </AnimatePresence>
+
       {/* Floating dock */}
       <FloatingDock activeWorkspace={workspace} onSelect={setWorkspace} />
       

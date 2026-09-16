@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Mic, Compass, BrainCircuit, Database, Zap, ShieldCheck, Settings, Code2, Network, Boxes, Link2, Share2, Package, Gauge } from 'lucide-react';
+import { Mic, Compass, BrainCircuit, Database, Zap, ShieldCheck, Settings, Code2, Network, Boxes, Link2, Share2, Package, Gauge, Sparkles } from 'lucide-react';
 
 export interface Workspace {
   id: string;
@@ -24,6 +24,7 @@ export const FloatingDock = ({
     { id: 'agents', label: 'Agents', icon: <BrainCircuit size={18} /> },
     { id: 'integrations', label: 'Capability Fabric', icon: <Network size={18} /> },
     { id: 'providers', label: 'AI Providers', icon: <Boxes size={18} /> },
+    { id: 'modelcenter', label: 'Model Center', icon: <Sparkles size={18} /> },
     { id: 'connectors', label: 'Connectors', icon: <Link2 size={18} /> },
     { id: 'memory', label: 'Memory', icon: <Database size={18} /> },
     { id: 'security', label: 'Security', icon: <ShieldCheck size={18} /> },

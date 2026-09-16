@@ -6,7 +6,7 @@ import type { ProviderType } from '@/core/models/ModelProvider';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_TYPES: ProviderType[] = ['ollama', 'openai', 'gemini', 'openai-compatible', 'local', 'custom'];
+const VALID_TYPES: ProviderType[] = ['ollama', 'openai', 'gemini', 'openai-compatible', 'openrouter', 'local', 'custom'];
 
 /** List configured providers — secrets are NEVER returned. */
 export async function GET(request: Request) {

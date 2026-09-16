@@ -55,6 +55,29 @@ LAST VERIFIED BEFORE: 39/39 npm test, clean.
   detected in this environment); a real cloud chat (no key); acoustic barge-in / mic /
   speaker (hardware). No binaries or models were downloaded or committed.
 
+## FIRST-RUN AI SETUP + MODEL CENTER (2026-09-16, this pass)
+Connected the backend into the real onboarding UI (no 2nd orchestrator/router).
+- `src/core/aiSetup/types.ts` (types-only, client-safe) + `setupViewModel.ts`
+  (pure builder + real gatherer). `src/core/catalog/catalogProvider.ts` loads +
+  verifies the SIGNED catalog (never fabricates models).
+- API: `GET /api/ai/setup` (public, non-secret honest VM), `POST /api/ai/mode`
+  (auth — sets existing ModelRouter policy; no silent cloud), `POST /api/ai/install`
+  (sensitive — drives ModelManager gates; usable=false always here; READY only
+  after real inference). Fixed /api/providers VALID_TYPES to accept 'openrouter'.
+- UI: `src/ui/onboarding/FirstRunOnboarding.tsx` (Welcome→device→choose AI, once
+  via localStorage) + `src/ui/workspaces/ModelCenterWorkspace.tsx` (permanent, dock
+  'modelcenter'); both consume /api/ai/setup. Honest badges: LOCAL RUNTIME NOT
+  DETECTED / MODEL CATALOG NOT CONFIGURED / OPENROUTER CONNECTION NOT CONFIGURED /
+  OFFLINE AI READY; performance Measured vs Estimated; no hard-coded model cards.
+- LIVE VERIFIED: `next start` + `curl /api/ai/setup` returned real device (16.9GB/
+  12 cores), runtimeAvailable:false, catalog not-configured, modelCount 0 — i.e. the
+  wizard reports truth, not a fake READY. Tests 105/105 (was 97), tsc clean,
+  next build ok, eslint clean.
+- STILL BLOCKED (unchanged, not faked): live local inference (no runtime), real
+  inference test (needs llama.cpp/Ollama + a signed artifact), OpenRouter LIVE OAuth
+  (no client_id). First-run VISUAL rendering in the Electron window not screenshot-
+  verified here (dev-server HTML/API verified) = environment-limited for pixels.
+
 ## PRODUCTION ARCHITECTURE LAYER (2026-09-16, HEAD 448ecf8 → this)
 Offline, tested extensions of the SAME architecture (no 2nd orchestrator/router/TTS):
 - `src/core/catalog/ModelCatalog.ts` — rich SIGNED catalog contract (family/version/
