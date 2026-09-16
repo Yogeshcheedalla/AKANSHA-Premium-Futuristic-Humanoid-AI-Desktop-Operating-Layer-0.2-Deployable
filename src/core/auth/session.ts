@@ -103,6 +103,30 @@ class AuthManager {
     return { token: signToken(principal), principal };
   }
 
+  /**
+   * Mint a signed 'user' session from an ALREADY-VERIFIED external identity
+   * (e.g. a Google account whose code was exchanged + userinfo validated on the
+   * server). This reuses the SAME HMAC token engine — it is not a second auth
+   * authority. Only safe profile fields are embedded; never a provider token or
+   * secret. Used by the Google OAuth callback.
+   */
+  issueIdentity(input: { sub: string; provider: string; email?: string; name?: string; avatar?: string }): { token: string; principal: Principal } {
+    const now = Date.now();
+    const principal: Principal = {
+      sub: input.sub,
+      role: 'user',
+      provider: input.provider,
+      email: input.email,
+      name: input.name,
+      avatar: input.avatar,
+      iat: now,
+      exp: now + SESSION_TTL_MS,
+      jti: crypto.randomBytes(12).toString('hex'),
+    };
+    eventBus.emit('auth.granted', 'Auth', { jti: principal.jti, role: 'user', provider: principal.provider });
+    return { token: signToken(principal), principal };
+  }
+
   /** Resolve the principal from a request (Authorization: Bearer or cookie). */
   authenticate(req: Request): Principal | null {
     const header = req.headers.get('authorization');

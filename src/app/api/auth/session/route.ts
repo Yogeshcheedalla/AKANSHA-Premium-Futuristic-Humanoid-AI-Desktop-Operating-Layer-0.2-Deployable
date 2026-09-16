@@ -56,8 +56,17 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const guard = authorize(request, 'authenticated');
-  if (!guard.ok) return guard.response;
-  return NextResponse.json({ ok: true, principal: guard.principal });
+  if (!guard.ok) return NextResponse.json({ authenticated: false }, { status: 401 });
+  const p = guard.principal;
+  // Only SAFE fields — never a secret, access token, refresh token, or key.
+  return NextResponse.json({
+    ok: true,
+    authenticated: true,
+    role: p?.role ?? null,
+    provider: p?.provider ?? null,
+    user: p && (p.email || p.name || p.avatar) ? { email: p.email, name: p.name, avatar: p.avatar } : null,
+    expiresAt: p?.exp ?? null,
+  });
 }
 
 export async function DELETE(request: Request) {

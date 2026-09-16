@@ -372,6 +372,9 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
     <a href="#capabilities">Capabilities</a>
     <a href="#fabric">Repository Fabric</a>
     <a href="#boot">Boot</a>
+    <span id="authWidget" class="auth-widget">
+      <a href="/api/auth/google" id="googleSignIn" class="nav-ghost">Sign in with Google</a>
+    </span>
     <a href="/app" class="nav-cta">Launch App</a>
   </div>
 </nav>
@@ -871,32 +874,75 @@ document.querySelectorAll('[data-count]').forEach(el=>co.observe(el));
 if ('serviceWorker' in navigator){
   addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
-/* ═════════ REAL INSTALLER: version + existence guard ═════════ */
+/* ═════════ TRUTH-DRIVEN DOWNLOADS (consumes /api/releases) ═════════ */
 (function(){
-  async function checkArtifact(id, url){
-    const card=document.getElementById(id); if(!card) return;
-    try{
-      const r=await fetch(url,{method:'HEAD'});
-      if(!r.ok) markUnavailable(card);
-    }catch(_){ markUnavailable(card); }
+  const PLATFORMS = ['win','mac','linux','android','ios'];
+  const PLAT_KEY = { win:'windows', mac:'macos', linux:'linux', android:'android', ios:'ios' };
+  function fmtSize(b){ if(!b) return ''; const mb=b/1048576; return mb>=1024?(mb/1024).toFixed(1)+' GB':mb.toFixed(0)+' MB'; }
+  function setUnavailable(panel, label){
+    const card = panel.querySelector('.dl-card'); if(!card) return;
+    card.removeAttribute('href'); card.removeAttribute('download');
+    card.style.pointerEvents='none'; card.style.opacity='.5';
+    const meta = card.querySelector('.dl-meta');
+    if(meta) meta.innerHTML = '<span>'+label+'</span>';
+    const cta = card.querySelector('.dl-cta'); if(cta) cta.textContent = label;
   }
-  function markUnavailable(card){
-    card.removeAttribute('href');
-    card.removeAttribute('download');
-    card.style.pointerEvents='none';
-    card.style.opacity='.5';
-    const meta=card.querySelector('.dl-meta');
-    if(meta){ meta.innerHTML='<span>Not built in this deployment</span><span>·</span><span>run: npm run dist:win</span>'; }
+  function setAvailable(panel, art){
+    const card = panel.querySelector('.dl-card'); if(!card) return;
+    card.setAttribute('href', art.url); card.setAttribute('download','');
+    card.style.pointerEvents=''; card.style.opacity='';
+    const cta = card.querySelector('.dl-cta'); if(cta) cta.textContent = 'DOWNLOAD';
+    const meta = card.querySelector('.dl-meta');
+    if(meta){
+      const bits = [];
+      if(art.version) bits.push('v'+art.version);
+      if(art.size) bits.push(fmtSize(art.size));
+      if(art.type) bits.push(art.type);
+      if(art.sha256) bits.push('SHA-256 '+String(art.sha256).slice(0,12)+'…');
+      meta.innerHTML = '<span>'+ (bits.join(' · ') || 'Verified artifact') +'</span>';
+    }
   }
-  fetch('/downloads/version.json').then(r=>r.ok?r.json():null).then(v=>{
-    if(v&&v.version){
-      const t='v'+v.version;
-      const w=document.getElementById('winVer'); if(w) w.textContent=t;
-      const p=document.getElementById('portVer'); if(p) p.textContent=t;
+  fetch('/api/releases').then(r=>r.ok?r.json():null).then(data=>{
+    const rel = (data && Array.isArray(data.releases)) ? data.releases : [];
+    const byPlat = {};
+    rel.forEach(a=>{ if(a && a.available){ const k=a.platform; if(!byPlat[k]) byPlat[k]=a; } });
+    PLATFORMS.forEach(p=>{
+      const panel = document.querySelector('.plat-panel[data-plat="'+p+'"]'); if(!panel) return;
+      const art = byPlat[PLAT_KEY[p]];
+      if(art) setAvailable(panel, art);
+      else setUnavailable(panel, 'Coming soon · build required');
+    });
+    // Extra Windows cards (portable / source) follow the same truth.
+    ['winSetup','winPortable'].forEach(id=>{ const el=document.getElementById(id); if(el && !el.getAttribute('href')) setUnavailable(el.closest('.plat-panel')||el.closest('.dl-grid')||el, 'Coming soon · build required'); });
+  }).catch(()=>{
+    // If the manifest is unreachable, default to NO fake buttons: mark all coming soon.
+    PLATFORMS.forEach(p=>{ const panel=document.querySelector('.plat-panel[data-plat="'+p+'"]'); if(panel) setUnavailable(panel,'Coming soon · build required'); });
+  });
+})();
+
+/* ═════════ GOOGLE AUTH WIDGET + callback status ═════════ */
+(function(){
+  const widget = document.getElementById('authWidget');
+  if(widget){ widget.querySelector('#googleSignIn').style.cssText='padding:6px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);font-size:12px;color:rgba(240,244,255,.7);text-decoration:none;margin-right:8px'; }
+  // Surface an honest reason if the Google callback bounced back.
+  const q = new URLSearchParams(location.search); const reason = q.get('auth');
+  if(reason){
+    const label = ({cancelled:'Google sign-in was cancelled.',not_configured:'Google sign-in is not configured yet.',invalid_state:'Sign-in link expired or invalid — please try again.',state_mismatch:'Security check failed (state mismatch) — please try again.',no_code:'Google did not return a code — please try again.',exchange_failed:'Sign-in failed while contacting Google — please try again.'}[reason]||('Sign-in issue: '+reason));
+    const bar=document.createElement('div'); bar.textContent=label;
+    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a1030;color:#e5e7eb;padding:10px 16px;font:13px system-ui;text-align:center;border-bottom:1px solid rgba(255,255,255,.1)';
+    document.body.appendChild(bar); setTimeout(()=>bar.remove(), 8000);
+    history.replaceState(null,'',location.pathname);
+  }
+  fetch('/api/auth/session',{credentials:'same-origin'}).then(r=>r.status===200?r.json():{authenticated:false}).then(s=>{
+    if(!widget) return;
+    if(s && s.authenticated && s.user){
+      const name = s.user.name || s.user.email || 'Account';
+      const av = s.user.avatar ? '<img src="'+s.user.avatar+'" alt="" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:6px">' : '';
+      widget.innerHTML = av+'<a href="/app" class="nav-ghost" style="margin-right:8px">Open Akansha</a><button id="signOutBtn" style="background:none;border:1px solid rgba(255,255,255,.12);color:rgba(240,244,255,.7);border-radius:10px;padding:6px 12px;font:12px inherit;cursor:pointer">Sign out ('+(name)+')</button>';
+      const b=document.getElementById('signOutBtn');
+      if(b) b.addEventListener('click', async ()=>{ try{ await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}); }catch(_){} location.reload(); });
     }
   }).catch(()=>{});
-  checkArtifact('winSetup','/downloads/Akansha-Setup.exe');
-  checkArtifact('winPortable','/downloads/Akansha-Portable.exe');
 })();
 </script>
 </body>

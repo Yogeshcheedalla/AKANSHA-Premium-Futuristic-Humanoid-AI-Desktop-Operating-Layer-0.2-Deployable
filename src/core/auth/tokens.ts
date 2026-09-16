@@ -8,6 +8,12 @@ export interface Principal {
   iat: number;
   exp: number;
   jti: string;
+  /** Optional SAFE identity profile carried in the signed token (never secrets). */
+  email?: string;
+  name?: string;
+  avatar?: string;
+  /** Which identity provider minted a 'user' session (e.g. 'google'). Absent for guest/local. */
+  provider?: string;
 }
 
 function secret(): Buffer {

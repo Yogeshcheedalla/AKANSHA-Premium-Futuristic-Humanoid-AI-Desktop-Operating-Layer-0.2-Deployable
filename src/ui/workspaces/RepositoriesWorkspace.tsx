@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
+import { loadRepositories } from './repositoriesLoader';
 import { Loader2, ExternalLink, ShieldAlert, Boxes, GitBranch, AlertOctagon, CheckCircle2, Clock, Layers, RotateCcw } from 'lucide-react';
 
 interface Repo {
@@ -50,22 +51,15 @@ export const RepositoriesWorkspace = () => {
   const [open, setOpen] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    const ctrl = new AbortController();
-    // Hard timeout so this can NEVER spin forever (the old code only cleared on a
-    // successful d.ok response, so any 401/500/non-ok/rejected fetch hung here).
-    const timer = setTimeout(() => ctrl.abort(), 12000);
-    fetch('/api/repositories', { signal: ctrl.signal, credentials: 'same-origin' })
-      .then(async (r) => {
-        const d = await r.json().catch(() => ({} as any));
-        if (!r.ok || !d || d.ok !== true) {
-          throw new Error(d?.error || (r.status === 401 ? 'Authentication required' : `Request failed (HTTP ${r.status})`));
-        }
-        return d as Data & { ok: true };
-      })
-      .then((d) => setData(d))
-      .catch((e: any) => setError(e?.name === 'AbortError' ? 'Timed out after 12s — the repository service did not respond in time.' : (e?.message || 'Failed to load the repository fabric.')))
-      .finally(() => { clearTimeout(timer); setLoading(false); });
-    return () => { clearTimeout(timer); ctrl.abort(); };
+    let cancelled = false;
+    // The helper guarantees a resolved ok/error result (never a hang), so the
+    // spinner can always leave the loading state.
+    loadRepositories().then((r) => {
+      if (cancelled) return;
+      if (r.ok) setData(r.data as unknown as Data);
+      else setError(r.error);
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const retry = useCallback(() => { setLoading(true); setError(null); load(); }, [load]);
