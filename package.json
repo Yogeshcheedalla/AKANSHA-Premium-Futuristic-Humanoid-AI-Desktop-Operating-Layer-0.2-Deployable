@@ -25,6 +25,7 @@
     "db:up": "docker compose up -d db",
     "electron:dev": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win nsis portable",
+    "release:manifest": "tsx scripts/release-manifest.ts",
     "dist:mac": "npm run build && electron-builder --mac dmg",
     "dist:linux": "npm run build && electron-builder --linux AppImage deb",
     "dist:all": "npm run dist:win && npm run dist:mac && npm run dist:linux",
