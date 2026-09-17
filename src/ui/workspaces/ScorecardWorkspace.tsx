@@ -22,25 +22,47 @@ export const ScorecardWorkspace = () => {
   const [red, setRed] = useState<RedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
+    setError(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
-      const [f, r] = await Promise.all([
-        fetch('/api/tests').then((x) => x.json()),
-        fetch('/api/redteam').then((x) => x.json()),
+      const [fr, rr] = await Promise.all([
+        fetch('/api/tests', { signal: ctrl.signal, credentials: 'same-origin' }),
+        fetch('/api/redteam', { signal: ctrl.signal, credentials: 'same-origin' }),
       ]);
-      if (f.ok) setFunc(f);
-      if (r.ok) setRed(r);
-    } finally { setLoading(false); }
+      if (fr.status === 401 || fr.status === 403 || rr.status === 401 || rr.status === 403) {
+        setError('This scorecard requires admin access. Sign in with an admin token to view functional + red-team results.');
+        return;
+      }
+      const [f, r] = await Promise.all([fr.json().catch(() => ({})), rr.json().catch(() => ({}))]);
+      if (!f.ok || !r.ok) throw new Error(f?.error || r?.error || 'One or more suites failed to load.');
+      setFunc(f); setRed(r);
+    } catch (e: any) {
+      setError(e?.name === 'AbortError' ? 'Timed out after 15s.' : (e?.message || 'Failed to load the scorecard.'));
+    } finally { clearTimeout(timer); setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
 
   const run = async () => { setBusy(true); await load(); setBusy(false); };
 
-  if (loading || !func || !red) {
+  if (loading && (!func || !red)) {
     return <div className="p-8 flex items-center justify-center gap-2 text-white/30 text-sm"><Loader2 size={14} className="animate-spin" /> Running test suites…</div>;
+  }
+  if (!func || !red) {
+    return (
+      <div className="p-8 max-w-xl mx-auto">
+        <GlassSurface className="p-8 rounded-2xl">
+          <div className="flex items-center gap-2 text-amber-300 mb-3"><ShieldCheck size={16} /><h2 className="text-lg font-light">Scorecard unavailable</h2></div>
+          <p className="text-sm text-white/45 mb-6">{error || 'Unknown error.'}</p>
+          <button onClick={run} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs hover:bg-cyan-500/25"><RefreshCw size={13} /> Retry</button>
+        </GlassSurface>
+      </div>
+    );
   }
 
   const f = func.summary, r = red.summary;

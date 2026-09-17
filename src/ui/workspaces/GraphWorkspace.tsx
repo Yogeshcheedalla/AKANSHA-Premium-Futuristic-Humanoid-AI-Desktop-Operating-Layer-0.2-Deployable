@@ -1,7 +1,7 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { BrainCircuit, Database, GitBranch, Activity, Loader2, Cpu, ShieldCheck } from 'lucide-react';
+import { BrainCircuit, Database, GitBranch, Activity, Loader2, Cpu, ShieldCheck, RotateCcw } from 'lucide-react';
 
 interface GraphData {
   models: { providers: { id: string; name: string; type: string; models: number }[]; totalModels: number; policy: string };
@@ -18,19 +18,43 @@ interface GraphData {
 export const GraphWorkspace = () => {
   const [data, setData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<number | null>(null);
 
-  useEffect(() => {
-    const load = () => fetch('/api/graph').then((r) => r.json()).then((d) => { if (d.ok) setData(d); }).finally(() => setLoading(false));
-    load();
-    const interval = setInterval(load, 8000);
-    return () => clearInterval(interval);
+  const load = useCallback(() => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    fetch('/api/graph', { signal: ctrl.signal, credentials: 'same-origin' })
+      .then(async (r) => { const d = await r.json().catch(() => ({} as any)); if (!r.ok || !d?.ok) throw new Error(d?.error || `Request failed (HTTP ${r.status})`); return d as GraphData; })
+      .then((d) => { setData(d); setError(null); })
+      .catch((e: any) => setError(e?.name === 'AbortError' ? 'Timed out after 12s.' : (e?.message || 'Failed to load the graph.')))
+      .finally(() => { clearTimeout(timer); setLoading(false); });
+    return () => { clearTimeout(timer); ctrl.abort(); };
   }, []);
 
-  if (loading || !data) {
+  const retry = useCallback(() => { setLoading(true); setError(null); load(); }, [load]);
+
+  useEffect(() => {
+    const cleanup = load();
+    const interval = setInterval(() => load(), 8000);
+    return () => { cleanup(); clearInterval(interval); };
+  }, [load]);
+
+  if (loading && !data) {
     return (
       <div className="p-8 flex items-center justify-center gap-2 text-white/30 text-sm">
         <Loader2 size={14} className="animate-spin" /> Mapping capability fabric…
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="p-8 max-w-xl mx-auto">
+        <GlassSurface className="p-8 rounded-2xl">
+          <h2 className="text-lg font-light text-rose-300 mb-3">Could not load the architecture graph</h2>
+          <p className="text-sm text-white/45 mb-6">{error || 'Unknown error.'}</p>
+          <button onClick={retry} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs hover:bg-cyan-500/25"><RotateCcw size={13} /> Retry</button>
+        </GlassSurface>
       </div>
     );
   }

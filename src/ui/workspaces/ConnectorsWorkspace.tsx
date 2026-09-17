@@ -19,18 +19,22 @@ export const ConnectorsWorkspace = () => {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [secret, setSecret] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/connectors');
-      const data = await res.json();
-      if (data.ok) { setDefinitions(data.definitions); setConnections(data.connections); }
-    } finally { setLoading(false); }
+  const load = useCallback(() => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    fetch('/api/connectors', { signal: ctrl.signal, credentials: 'same-origin' })
+      .then(async (r) => { const d = await r.json().catch(() => ({} as any)); if (!r.ok || !d.ok) throw new Error(d?.error || (r.status === 401 ? 'Authentication required' : `Request failed (HTTP ${r.status})`)); return d; })
+      .then((d) => { setDefinitions(d.definitions || []); setConnections(d.connections || []); setError(null); })
+      .catch((e: any) => setError(e?.name === 'AbortError' ? 'Timed out after 12s.' : (e?.message || 'Failed to load connectors.')))
+      .finally(() => { clearTimeout(timer); setLoading(false); });
+    return () => { clearTimeout(timer); ctrl.abort(); };
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => load(), [load]);
 
   const connect = async (provider: string) => {
     setConnecting(provider);
@@ -77,6 +81,12 @@ export const ConnectorsWorkspace = () => {
 
       {loading ? (
         <div className="text-white/30 text-sm animate-pulse">Loading connectors…</div>
+      ) : error && definitions.length === 0 ? (
+        <GlassSurface className="p-8 rounded-2xl max-w-xl mx-auto">
+          <h2 className="text-lg font-light text-rose-300 mb-3">Could not load connectors</h2>
+          <p className="text-sm text-white/45 mb-6">{error}</p>
+          <button onClick={() => { setLoading(true); setError(null); load(); }} className="px-4 py-2 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs hover:bg-cyan-500/25">Retry</button>
+        </GlassSurface>
       ) : (
         <div className="space-y-8">
           {Object.entries(byCategory).map(([category, defs]) => (

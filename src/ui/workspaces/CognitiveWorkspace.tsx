@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Loader2, Mic, MicOff, ShieldCheck, Brain, Eye, Bell, Sparkles, AlertTriangle, Send } from 'lucide-react';
+import { Loader2, Mic, MicOff, ShieldCheck, Brain, Eye, Bell, Sparkles, AlertTriangle, Send, RotateCcw } from 'lucide-react';
 
 interface CognitiveData {
   voice: {
@@ -43,6 +43,7 @@ const MODE_COLOR: Record<string, string> = {
 export const CognitiveWorkspace = () => {
   const [data, setData] = useState<CognitiveData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [utterance, setUtterance] = useState('');
   const [isFinal, setIsFinal] = useState(true);
@@ -57,12 +58,16 @@ export const CognitiveWorkspace = () => {
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
     try {
-      const res = await fetch('/api/cognitive');
-      const d = await res.json();
-      if (d.ok && mounted.current) setData(d);
-    } catch { /* ignore */ }
-    finally { if (mounted.current) setLoading(false); }
+      const res = await fetch('/api/cognitive', { signal: ctrl.signal, credentials: 'same-origin' });
+      const d = await res.json().catch(() => ({} as any));
+      if (!res.ok || !d?.ok) throw new Error(d?.error || (res.status === 401 ? 'Authentication required' : `Request failed (HTTP ${res.status})`));
+      if (mounted.current) { setData(d); setError(null); }
+    } catch (e: any) {
+      if (mounted.current) setError(e?.name === 'AbortError' ? 'Timed out after 12s.' : (e?.message || 'Failed to load the cognitive layer.'));
+    } finally { clearTimeout(timer); if (mounted.current) setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -82,8 +87,19 @@ export const CognitiveWorkspace = () => {
     } finally { setBusy(false); }
   };
 
-  if (loading || !data) {
+  if (loading && !data) {
     return <div className="p-8 flex items-center justify-center gap-2 text-white/30 text-sm"><Loader2 size={14} className="animate-spin" /> Loading cognitive layer…</div>;
+  }
+  if (!data) {
+    return (
+      <div className="p-8 max-w-xl mx-auto">
+        <GlassSurface className="p-8 rounded-2xl">
+          <h2 className="text-lg font-light text-rose-300 mb-3">Could not load the cognitive layer</h2>
+          <p className="text-sm text-white/45 mb-6">{error || 'Unknown error.'}</p>
+          <button onClick={() => { setLoading(true); setError(null); load(); }} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs hover:bg-cyan-500/25"><RotateCcw size={13} /> Retry</button>
+        </GlassSurface>
+      </div>
+    );
   }
 
   const v = data.voice;

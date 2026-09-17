@@ -37,9 +37,38 @@ export default function AkanshaAppPage() {
   const [systemState] = useState<'online' | 'offline' | 'degraded'>('online');
   const [currentMission] = useState('No active missions');
   const [onboard, setOnboard] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     try { if (!localStorage.getItem(ONBOARD_FLAG)) setOnboard(true); } catch { /* SSR/no-storage: skip */ }
+  }, []);
+
+  // Establish an accountless session at the APPLICATION boundary (never on "/").
+  // Desktop exchanges the local bootstrap passphrase (full control); web users get
+  // a low-privilege guest session. This is why the authenticated panels (Graph,
+  // Cognitive, Connectors, Repository Fabric) no longer 401 and hang on a spinner.
+  // A safety timeout guarantees the shell itself can never hang on this step.
+  useEffect(() => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; setReady(true); } };
+    (async () => {
+      try {
+        const cur = await fetch('/api/auth/session', { credentials: 'same-origin' });
+        if (cur.status === 200) { finish(); return; }
+        const desk = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+        if (desk?.getBootstrapPassphrase) {
+          const p = await desk.getBootstrapPassphrase();
+          if (p) {
+            await fetch('/api/auth/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: p }), credentials: 'same-origin' });
+            finish(); return;
+          }
+        }
+        await fetch('/api/auth/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guest: true }), credentials: 'same-origin' });
+      } catch { /* stay accountless; panels show their own honest errors */ }
+      finish();
+    })();
+    const t = setTimeout(finish, 5000);
+    return () => clearTimeout(t);
   }, []);
 
   const renderWorkspace = () => {
@@ -89,6 +118,17 @@ export default function AkanshaAppPage() {
       default: return <CommandWorkspace />;
     }
   };
+
+  if (!ready) {
+    return (
+      <div className="relative min-h-screen overflow-hidden text-white flex items-center justify-center" style={{ background: '#010208' }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_10px_rgba(0,240,255,0.5)]" />
+          <span className="text-[11px] uppercase tracking-[0.2em] text-white/40">Starting Akansha…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden text-white selection:bg-cyan-500/20 selection:text-cyan-50">
