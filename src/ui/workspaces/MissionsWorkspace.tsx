@@ -1,85 +1,54 @@
+"use client";
 import React from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Zap, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { WorkspaceScaffold } from '../core/WorkspaceScaffold';
+import { useApiResource } from '../core/useApiResource';
+import { Zap } from 'lucide-react';
+
+interface Mission {
+  id: string; goal: string; status: string; stepCount: number; completedSteps: number;
+  currentStep: string | null; artifacts: number; createdAt: number; updatedAt: number;
+}
+interface MissionsResponse { ok: boolean; active: Mission[]; }
+
+const TONE: Record<string, string> = {
+  RUNNING: 'text-emerald-300', EXECUTING: 'text-emerald-300', VERIFYING: 'text-cyan-300',
+  PLANNING: 'text-purple-300', OBSERVING: 'text-cyan-300', WAITING: 'text-amber-300',
+  RECOVERING: 'text-amber-300', NEEDS_CONFIRMATION: 'text-amber-300', QUEUED: 'text-white/40',
+  FAILED: 'text-rose-300', REFUSED: 'text-rose-300',
+};
 
 export const MissionsWorkspace = () => {
-  const missions = [
-    { id: 'm1', name: 'Analyze System Health', status: 'completed', progress: 100, steps: 5 },
-    { id: 'm2', name: 'Organize Project Files', status: 'running', progress: 60, steps: 4 },
-    { id: 'm3', name: 'Research Latest AI Developments', status: 'running', progress: 30, steps: 3 },
-    { id: 'm4', name: 'Update Memory Profile', status: 'waiting', progress: 0, steps: 2 },
-  ];
-
-  const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
-    completed: { color: 'text-emerald-400', icon: <CheckCircle size={16} /> },
-    running: { color: 'text-cyan-400', icon: <Clock size={16} /> },
-    waiting: { color: 'text-amber-400', icon: <AlertCircle size={16} /> },
-  };
+  const { data, loading, error, needsAuth, retry } = useApiResource<MissionsResponse>('/api/missions', { intervalMs: 5000 });
+  const isEmpty = !!data && data.active.length === 0;
 
   return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto">
-      <h1 className="text-3xl font-light text-white/90 mb-2 tracking-tight">Mission Control</h1>
-      <p className="text-white/30 text-sm mb-8">Active autonomous missions and execution pipeline</p>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {missions.map((m) => (
-          <GlassSurface key={m.id} className="p-5 rounded-2xl">
-            <div className="flex items-start justify-between mb-3">
-              <h3 className="text-white/90 font-medium text-sm">{m.name}</h3>
-              <span className={`flex items-center gap-1.5 text-xs uppercase tracking-wider ${statusConfig[m.status].color}`}>
-                {statusConfig[m.status].icon}
-                {m.status}
-              </span>
-            </div>
-            
-            {/* Mission pipeline visualization */}
-            <div className="flex items-center gap-2 mb-3">
-              {['Plan', 'Execute', 'Observe', 'Verify', 'Learn'].map((step, i) => {
-                const completed = i < Math.floor((m.progress / 100) * 5);
-                const active = i === Math.floor((m.progress / 100) * 5) && m.progress < 100;
-                return (
-                  <React.Fragment key={step}>
-                    <div className={`flex-1 h-1.5 rounded-full transition-all duration-500 ${completed ? 'bg-cyan-400/60' : active ? 'bg-cyan-400/30' : 'bg-white/5'}`} />
-                    <div className={`w-1 h-1 rounded-full flex-shrink-0 ${completed ? 'bg-cyan-400' : active ? 'bg-cyan-400/50 animate-pulse' : 'bg-white/10'}`} />
-                  </React.Fragment>
-                );
-              })}
-            </div>
-            
-            <div className="flex items-center gap-4 text-xs text-white/40">
-              <span>Progress: {m.progress}%</span>
-              <span>Steps: {m.steps}</span>
-            </div>
-          </GlassSurface>
-        ))}
-      </div>
-      
-      {/* Pipeline architecture visualization */}
-      <GlassSurface className="mt-6 p-6 rounded-2xl">
-        <h3 className="text-white/80 font-medium mb-6">Execution Pipeline</h3>
-        <div className="flex items-center justify-between gap-2 md:gap-4 text-xs text-white/50">
-          {[
-            { label: 'Request', desc: 'User intent' },
-            { label: 'Planner', desc: 'Mission design' },
-            { label: 'Agent', desc: 'Capability routing' },
-            { label: 'Execute', desc: 'Tool action' },
-            { label: 'Observe', desc: 'State capture' },
-            { label: 'Verify', desc: 'Result check' },
-            { label: 'Learn', desc: 'Memory update' },
-          ].map((node, i) => (
-            <React.Fragment key={node.label}>
-              <div className="flex flex-col items-center gap-2 min-w-[60px]">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-cyan-400/20 flex items-center justify-center text-cyan-300/80 text-[10px] font-bold">
-                  {i + 1}
-                </div>
-                <span className="text-[10px] uppercase tracking-wider text-white/60">{node.label}</span>
-                <span className="text-[9px] text-white/30">{node.desc}</span>
+    <WorkspaceScaffold
+      title="Missions"
+      subtitle="Active missions from the Master Orchestrator (plan → execute → observe → verify → learn)"
+      loading={loading} error={error} needsAuth={needsAuth} onRetry={retry}
+      empty={isEmpty}
+      emptyMessage="No active missions. Start one from the Command workspace."
+      icon={<Zap size={22} className="text-cyan-300/80" />}
+    >
+      {data && (
+        <div className="space-y-3">
+          {data.active.map((m) => (
+            <GlassSurface key={m.id} className="p-5 rounded-2xl">
+              <div className="flex items-center gap-3">
+                <span className={`text-[10px] uppercase tracking-wider font-medium ${TONE[m.status] || 'text-white/40'}`}>{m.status}</span>
+                <span className="text-sm text-white/85 font-medium flex-1 truncate">{m.goal}</span>
+                <span className="text-[10px] text-white/30">{m.completedSteps}/{m.stepCount} steps</span>
               </div>
-              {i < 6 && <div className="flex-1 h-px bg-gradient-to-r from-cyan-400/20 via-purple-400/10 to-cyan-400/20" />}
-            </React.Fragment>
+              {m.currentStep && <p className="text-xs text-cyan-200/60 mt-2">▸ {m.currentStep}</p>}
+              <div className="h-1 rounded-full bg-white/5 mt-3 overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-cyan-400/60 to-purple-400/60"
+                  style={{ width: `${m.stepCount ? Math.round((m.completedSteps / m.stepCount) * 100) : 0}%` }} />
+              </div>
+            </GlassSurface>
           ))}
         </div>
-      </GlassSurface>
-    </div>
+      )}
+    </WorkspaceScaffold>
   );
 };

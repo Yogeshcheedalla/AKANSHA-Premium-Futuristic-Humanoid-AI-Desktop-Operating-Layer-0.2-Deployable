@@ -1,82 +1,73 @@
+"use client";
 import React from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { BrainCircuit, Sparkles, Shield, Zap, Globe, Database, Terminal, Bot } from 'lucide-react';
+import { WorkspaceScaffold } from '../core/WorkspaceScaffold';
+import { useApiResource } from '../core/useApiResource';
+import { BrainCircuit } from 'lucide-react';
+
+interface Agent {
+  agentId: string; name: string; role: string; capabilities: string[];
+  permissions: string[]; status: 'idle' | 'busy' | 'paused' | 'terminated';
+  currentTask: string | null; successRate: number;
+}
+interface AgentsResponse {
+  ok: boolean;
+  agents: Agent[];
+  budget: { cpu: number; ram: number; gpu: number; parallelism?: number };
+  canDispatch: { allowed: boolean; reason?: string };
+}
+
+const STATUS_TONE: Record<string, string> = {
+  idle: 'bg-white/25', busy: 'bg-emerald-400', paused: 'bg-amber-400', terminated: 'bg-rose-400',
+};
 
 export const AgentsWorkspace = () => {
-  const agents = [
-    { id: 'master', name: 'Master Orchestrator', role: 'Coordination', status: 'online', desc: 'Highest-level intelligence coordinator' },
-    { id: 'planner', name: 'Planner Agent', role: 'Planning', status: 'online', desc: 'Mission planning and strategy' },
-    { id: 'windows', name: 'Windows Agent', role: 'Desktop', status: 'online', desc: 'Application and desktop control' },
-    { id: 'vision', name: 'Vision Agent', role: 'Vision', status: 'online', desc: 'Screen understanding and analysis' },
-    { id: 'research', name: 'Research Agent', role: 'Knowledge', status: 'online', desc: 'Web research and synthesis' },
-    { id: 'coding', name: 'Coding Agent', role: 'Development', status: 'online', desc: 'Code generation and debugging' },
-    { id: 'terminal', name: 'Terminal Agent', role: 'Shell', status: 'online', desc: 'Command execution and scripts' },
-  ];
-
-  const icons = [BrainCircuit, Sparkles, Shield, Zap, Globe, Database, Terminal, Bot];
+  const { data, loading, error, needsAuth, retry } = useApiResource<AgentsResponse>('/api/agents', { intervalMs: 6000 });
+  const isEmpty = !!data && data.agents.length === 0;
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-light text-white/90 mb-2 tracking-tight">Agent Network</h1>
-      <p className="text-white/30 text-sm mb-8">Intelligent agent ecosystem connected through capability routing</p>
-      
-      {/* Master agent visualization */}
-      <div className="flex justify-center mb-8">
-        <div className="relative">
-          <GlassSurface className="w-40 h-40 rounded-3xl flex flex-col items-center justify-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/5 to-transparent" />
-            <BrainCircuit size={36} className="text-cyan-300/90 mb-2" />
-            <span className="text-sm font-medium text-white/90">Master</span>
-            <span className="text-[10px] text-cyan-300/80 uppercase tracking-wider">Orchestrator</span>
+    <WorkspaceScaffold
+      title="Agents"
+      subtitle="The live AgentSupervisor registry — statuses reflect real runtime state, not placeholders"
+      loading={loading} error={error} needsAuth={needsAuth} onRetry={retry}
+      empty={isEmpty}
+      emptyMessage="No agents are registered right now."
+      icon={<BrainCircuit size={22} className="text-cyan-300/80" />}
+    >
+      {data && (
+        <>
+          <GlassSurface className="p-4 rounded-xl flex items-center gap-4 text-[11px] text-white/45">
+            <span>Parallelism <span className="text-white/80">{data.budget.parallelism ?? '—'}</span></span>
+            <span>·</span>
+            <span>Dispatch: {data.canDispatch.allowed
+              ? <span className="text-emerald-300">ready</span>
+              : <span className="text-amber-300">throttled — {data.canDispatch.reason || 'at capacity'}</span>}
+            </span>
           </GlassSurface>
-          
-          {/* Orbit connections */}
-          <div className="absolute inset-0 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-            {agents.slice(1).map((agent, i) => {
-              const angle = (i * 360) / 6;
-              const rad = (angle * Math.PI) / 180;
-              return (
-                <div
-                  key={agent.id}
-                  className="absolute w-32 h-32 pointer-events-none"
-                  style={{
-                    top: '50%',
-                    left: '50%',
-                    transformOrigin: '0 0',
-                    transform: `rotate(${angle}deg) translateX(160px)`,
-                  }}
-                >
-                  <div className="absolute top-1/2 left-0 w-full h-px bg-gradient-to-r from-cyan-400/20 to-transparent" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.agents.map((a) => (
+              <GlassSurface key={a.agentId} className="p-5 rounded-2xl">
+                <div className="flex items-center gap-2.5">
+                  <span className={`w-2 h-2 rounded-full ${STATUS_TONE[a.status] || 'bg-white/25'}`} />
+                  <span className="text-sm text-white/85 font-medium">{a.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/30 ml-auto">{a.status}</span>
                 </div>
-              );
-            })}
+                <p className="text-xs text-white/40 mt-2">{a.role}</p>
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {a.capabilities.map((c) => (
+                    <span key={c} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/8 text-[9px] text-white/45">{c}</span>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between mt-3 text-[10px] text-white/30">
+                  <span>{a.permissions.length ? a.permissions.join(', ') : 'no special permissions'}</span>
+                  <span>{a.currentTask ? 'task active' : 'no task'}</span>
+                </div>
+              </GlassSurface>
+            ))}
           </div>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {agents.map((agent, i) => {
-          const Icon = icons[i] || BrainCircuit;
-          return (
-            <GlassSurface key={agent.id} className="p-4 rounded-xl hover:scale-[1.02] transition-transform duration-300">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/15 to-purple-500/15 flex items-center justify-center flex-shrink-0">
-                  <Icon size={16} className="text-cyan-300/80" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-medium text-white/90 truncate">{agent.name}</h3>
-                  <span className="text-[10px] uppercase tracking-wider text-white/30">{agent.role}</span>
-                  <p className="text-xs text-white/40 mt-1">{agent.desc}</p>
-                  <div className="flex items-center gap-1.5 mt-2.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] text-emerald-400/80">{agent.status}</span>
-                  </div>
-                </div>
-              </div>
-            </GlassSurface>
-          );
-        })}
-      </div>
-    </div>
+        </>
+      )}
+    </WorkspaceScaffold>
   );
 };

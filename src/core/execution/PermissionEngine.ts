@@ -64,3 +64,22 @@ export class PermissionEngine {
 }
 
 export const permissionEngine = new PermissionEngine();
+
+/**
+ * Read-only view of the REAL desktop-action authorization model, for the Security
+ * workspace. Exposes exactly the action→permission mapping the engine uses and which
+ * action kinds are considered non-mutating (auto-run) — so the UI can never drift from
+ * the code that actually gates execution. Adds no new decision logic.
+ */
+export function permissionCatalog(): {
+  actionPermissions: Record<string, string[]>;
+  autoRunKinds: string[];
+  confirmingKinds: string[];
+} {
+  const all = Object.keys(PERMISSION_FOR_ACTION);
+  return {
+    actionPermissions: PERMISSION_FOR_ACTION as Record<string, string[]>,
+    autoRunKinds: [...AUTO_OK],
+    confirmingKinds: all.filter((k) => !(AUTO_OK as string[]).includes(k)),
+  };
+}

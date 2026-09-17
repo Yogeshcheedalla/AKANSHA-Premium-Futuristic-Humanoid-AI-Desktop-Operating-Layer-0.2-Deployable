@@ -11,6 +11,7 @@ import { ScorecardWorkspace } from '@/ui/workspaces/ScorecardWorkspace';
 import { MissionsWorkspace } from '@/ui/workspaces/MissionsWorkspace';
 import { AgentsWorkspace } from '@/ui/workspaces/AgentsWorkspace';
 import { MemoryWorkspace } from '@/ui/workspaces/MemoryWorkspace';
+import { SecurityWorkspace } from '@/ui/workspaces/SecurityWorkspace';
 import { SettingsWorkspace } from '@/ui/workspaces/SettingsWorkspace';
 import { IntegrationsWorkspace } from '@/ui/workspaces/IntegrationsWorkspace';
 import { ProvidersWorkspace } from '@/ui/workspaces/ProvidersWorkspace';
@@ -52,34 +53,7 @@ export default function AppClient() {
       case 'modelcenter': return <ModelCenter />;
       case 'connectors': return <ConnectorsWorkspace />;
       case 'memory': return <MemoryWorkspace />;
-      case 'security':
-        return (
-          <div className="p-8 max-w-4xl mx-auto">
-            <h1 className="text-3xl font-light text-white/90 mb-2 tracking-tight">Security & Audit</h1>
-            <p className="text-white/30 text-sm mb-8">Permission architecture, audit center, and credential management</p>
-            <GlassSurface className="p-8 rounded-2xl">
-              <h2 className="text-xl font-light text-white/80 mb-6">Permission System</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[
-                  { name: 'READ_FILES', risk: 'LOW', status: 'GRANTED' },
-                  { name: 'WRITE_FILES', risk: 'MEDIUM', status: 'APPROVED' },
-                  { name: 'EXECUTE_COMMANDS', risk: 'HIGH', status: 'REQUIRES_AUTH' },
-                  { name: 'NETWORK_ACCESS', risk: 'LOW', status: 'GRANTED' },
-                  { name: 'CAMERA_ACCESS', risk: 'HIGH', status: 'APPROVED' },
-                  { name: 'DEVICE_CONTROL', risk: 'HIGH', status: 'APPROVED' },
-                  { name: 'MESSAGE_SEND', risk: 'MEDIUM', status: 'APPROVED' },
-                  { name: 'PURCHASE_ACTION', risk: 'HIGH', status: 'DENIED' },
-                ].map((perm) => (
-                  <div key={perm.name} className="p-3 rounded-lg bg-white/5 border border-white/5">
-                    <div className="text-xs font-medium text-white/70">{perm.name}</div>
-                    <div className="text-[10px] text-white/30 mt-1">Risk: {perm.risk}</div>
-                    <div className={`text-[10px] mt-1 font-medium ${perm.status === 'GRANTED' ? 'text-emerald-400' : perm.status === 'APPROVED' ? 'text-cyan-400' : perm.status === 'REQUIRES_AUTH' ? 'text-amber-400' : 'text-rose-400'}`}>{perm.status}</div>
-                  </div>
-                ))}
-              </div>
-            </GlassSurface>
-          </div>
-        );
+      case 'security': return <SecurityWorkspace />;
       case 'scorecard': return <ScorecardWorkspace />;
       case 'settings': return <SettingsWorkspace />;
       default: return <CommandWorkspace />;

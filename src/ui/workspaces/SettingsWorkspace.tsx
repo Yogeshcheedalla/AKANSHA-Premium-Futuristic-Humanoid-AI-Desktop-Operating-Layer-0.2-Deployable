@@ -1,17 +1,30 @@
+"use client";
 import React, { useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Mic, Eye, Shield, Database, Zap, BrainCircuit, Volume2, Power } from 'lucide-react';
+import { Shield, Power, Boxes, Link2 } from 'lucide-react';
 
+const Toggle = ({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) => (
+  <button
+    type="button"
+    aria-pressed={on}
+    disabled={disabled}
+    onClick={onClick}
+    className={`w-11 h-6 rounded-full relative transition-colors duration-300 shrink-0 ${on ? 'bg-cyan-500/30' : 'bg-white/10'} border ${on ? 'border-cyan-400/30' : 'border-white/10'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+  >
+    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-cyan-300 to-purple-300 transition-transform duration-300 ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
+  </button>
+);
+
+/**
+ * Configuration. Only controls that are ACTUALLY wired are interactive here:
+ *  - "Start with Windows" is real (desktop build only; hidden in the browser).
+ * Everything that is not yet connected to the runtime is shown honestly disabled with
+ * an explanation, rather than as a toggle that only looks alive. Voice is driven by the
+ * header control; AI providers and connected services are managed in their own workspaces.
+ */
 export const SettingsWorkspace = () => {
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [ambientEnabled, setAmbientEnabled] = useState(false);
-  const [memoryEnabled, setMemoryEnabled] = useState(true);
-  const [privacyLock, setPrivacyLock] = useState(false);
   const [startup, setStartup] = useState<{ show: boolean; supported: boolean; enabled: boolean; busy: boolean; note?: string }>({ show: false, supported: false, enabled: false, busy: false });
 
-  // Desktop-only "Start with Windows" — reflects the REAL login-item state via the
-  // narrow preload bridge. Hidden entirely in the browser (no bridge), and shows an
-  // honest "unavailable" note when the packaged login-item API is unsupported.
   useEffect(() => {
     const bridge = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
     if (!bridge || typeof bridge.getStartup !== 'function') return;
@@ -25,92 +38,63 @@ export const SettingsWorkspace = () => {
     if (!bridge || !startup.supported) return;
     setStartup((p) => ({ ...p, busy: true }));
     try {
-      const next = !startup.enabled;
-      const r: any = await bridge.setStartup(next);
+      const r: any = await bridge.setStartup(!startup.enabled);
       if (r?.ok) setStartup((p) => ({ ...p, enabled: !!r.enabled, busy: false }));
       else setStartup((p) => ({ ...p, busy: false, note: r?.reason === 'not-packaged' ? 'Available in the installed app' : (r?.reason || 'unavailable') }));
     } catch { setStartup((p) => ({ ...p, busy: false, note: 'unavailable' })); }
   };
 
-  const settings = [
-    { key: 'voice', label: 'Voice Interaction', desc: 'Always-available voice interface', enabled: voiceEnabled, toggle: () => setVoiceEnabled(!voiceEnabled), icon: <Mic size={16} /> },
-    { key: 'ambient', label: 'Ambient Intelligence', desc: 'Environmental monitoring and event timeline', enabled: ambientEnabled, toggle: () => setAmbientEnabled(!ambientEnabled), icon: <Eye size={16} /> },
-    { key: 'memory', label: 'Persistent Memory', desc: 'Long-term learning and knowledge storage', enabled: memoryEnabled, toggle: () => setMemoryEnabled(!memoryEnabled), icon: <Database size={16} /> },
-    { key: 'models', label: 'AI Provider', desc: 'Experiential Labs — primary intelligence layer', enabled: true, toggle: () => {}, icon: <BrainCircuit size={16} /> },
-  ];
-
   return (
-    <div className="p-6 md:p-8 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-light text-white/90 mb-2 tracking-tight">Configuration</h1>
-      <p className="text-white/30 text-sm mb-8">System settings, privacy controls, and capability management</p>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-        {settings.map((s) => (
-          <GlassSurface key={s.key} className="p-5 rounded-2xl flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/15 to-purple-500/15 flex items-center justify-center">
-                <span className="text-cyan-300/80">{s.icon}</span>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-white/90">{s.label}</h3>
-                <p className="text-xs text-white/30">{s.desc}</p>
-              </div>
-            </div>
-            <button
-              onClick={s.toggle}
-              className={`w-11 h-6 rounded-full relative transition-colors duration-300 ${s.enabled ? 'bg-cyan-500/30' : 'bg-white/10'} border ${s.enabled ? 'border-cyan-400/30' : 'border-white/10'}`}
-            >
-              <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-cyan-300 to-purple-300 transition-transform duration-300 ${s.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-            </button>
-          </GlassSurface>
-        ))}
+    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-3xl font-light text-white/90 tracking-tight">Configuration</h1>
+        <p className="text-white/30 text-sm">Only controls that are actually wired are enabled; everything else is honestly marked</p>
       </div>
 
-      {startup.show && (
-        <GlassSurface className="p-5 rounded-2xl flex items-center justify-between mb-8">
+      {startup.show ? (
+        <GlassSurface className="p-5 rounded-2xl flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/15 to-purple-500/15 flex items-center justify-center">
-              <span className="text-cyan-300/80"><Power size={16} /></span>
-            </div>
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/15 to-purple-500/15 flex items-center justify-center text-cyan-300/80"><Power size={16} /></div>
             <div>
               <h3 className="text-sm font-medium text-white/90">Start with Windows</h3>
-              <p className="text-xs text-white/30">Launch Akansha at sign-in (single instance, tray-ready; does not auto-record)</p>
+              <p className="text-xs text-white/30">{startup.note ? `Login item: ${startup.note}` : 'Launch Akansha at sign-in (single instance, tray-ready; does not auto-record)'}</p>
             </div>
           </div>
-          <button
-            onClick={toggleStartup}
-            disabled={!startup.supported || startup.busy}
-            className={`w-11 h-6 rounded-full relative transition-colors duration-300 ${startup.enabled ? 'bg-cyan-500/30' : 'bg-white/10'} border ${startup.enabled ? 'border-cyan-400/30' : 'border-white/10'} ${(!startup.supported || startup.busy) ? 'opacity-40 cursor-not-allowed' : ''}`}
-          >
-            <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-cyan-300 to-purple-300 transition-transform duration-300 ${startup.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-          </button>
+          <Toggle on={startup.enabled} onClick={toggleStartup} disabled={!startup.supported || startup.busy} />
+        </GlassSurface>
+      ) : (
+        <GlassSurface className="p-5 rounded-2xl flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center text-white/30"><Power size={16} /></div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium text-white/60">Start with Windows</h3>
+            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-white/5 text-white/35">Desktop app only</span>
+          </div>
+          <p className="text-xs text-white/30 ml-auto max-w-xs text-right">The auto-start login item is available in the installed desktop app, not in the web app.</p>
         </GlassSurface>
       )}
-      
-      {/* Emergency privacy lock */}
-      <GlassSurface className={`p-6 rounded-3xl border-2 transition-all duration-500 ${privacyLock ? 'border-rose-500/40 bg-rose-500/5' : 'border-white/10'}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${privacyLock ? 'bg-rose-500/20 text-rose-400' : 'bg-gradient-to-br from-cyan-500/15 to-purple-500/15 text-cyan-300/80'}`}>
-              <Shield size={24} />
+
+      {/* Honest disabled control: not yet wired to the single authoritative audio engine. */}
+      <GlassSurface className="p-6 rounded-3xl border border-white/10">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-white/30"><Shield size={24} /></div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-light text-white/70">Emergency privacy lock</h2>
+              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-300">Coming soon</span>
             </div>
-            <div>
-              <h2 className="text-xl font-light text-white/90">Emergency Privacy Lock</h2>
-              <p className="text-sm text-white/40">Immediately disable microphone, camera, and ambient monitoring</p>
-            </div>
+            <p className="text-sm text-white/35 mt-1">
+              A global kill-switch that forces the microphone, camera and ambient monitoring off is not yet wired into the runtime, so it is shown disabled rather than pretending to work.
+            </p>
           </div>
-          <button
-            onClick={() => setPrivacyLock(!privacyLock)}
-            className={`px-6 py-3 rounded-xl font-medium text-sm tracking-wide transition-all duration-300 ${privacyLock ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-400/20 hover:scale-[1.02]'}`}
-          >
-            {privacyLock ? 'LOCKED' : 'ACTIVATE LOCK'}
-          </button>
+          <Toggle on={false} onClick={() => {}} disabled />
         </div>
-        
-        <div className="mt-4 flex gap-4 text-xs text-white/30">
-          <span>Microphone: <strong className={privacyLock ? 'text-rose-400' : 'text-emerald-400'}>{privacyLock ? 'OFF' : 'ON'}</strong></span>
-          <span>Camera: <strong className={privacyLock ? 'text-rose-400' : 'text-emerald-400'}>{privacyLock ? 'OFF' : 'ON'}</strong></span>
-          <span>Ambient: <strong className={privacyLock ? 'text-rose-400' : 'text-emerald-400'}>{privacyLock ? 'OFF' : 'OFF'}</strong></span>
+      </GlassSurface>
+
+      <GlassSurface className="p-5 rounded-2xl">
+        <h3 className="text-white/70 font-medium text-sm mb-3">Managed elsewhere</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <div className="flex items-center gap-3 text-white/50"><Boxes size={15} className="text-cyan-300/70" /> AI providers &amp; models → AI Providers / Model Center</div>
+          <div className="flex items-center gap-3 text-white/50"><Link2 size={15} className="text-cyan-300/70" /> Connected services → Connectors</div>
         </div>
       </GlassSurface>
     </div>
