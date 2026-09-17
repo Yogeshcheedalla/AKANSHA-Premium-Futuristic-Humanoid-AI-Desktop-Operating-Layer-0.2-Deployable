@@ -42,4 +42,20 @@ contextBridge.exposeInMainWorld('akanshaDesktop', {
   getBootstrapPassphrase() {
     return ipcRenderer.invoke('akansha:bootstrap-passphrase');
   },
+
+  // ── Desktop shell: startup + window + voice sync (narrow, no Node/FS) ──
+  getStartup() { return ipcRenderer.invoke('akansha:get-startup'); },
+  setStartup(enabled) { return ipcRenderer.invoke('akansha:set-startup', !!enabled); },
+  showWindow() { return ipcRenderer.invoke('akansha:show-window'); },
+  hideWindow() { return ipcRenderer.invoke('akansha:hide-window'); },
+  quit() { return ipcRenderer.invoke('akansha:quit'); },
+
+  // Tray -> renderer: start/stop the SAME authoritative AudioEngine (no 2nd mic).
+  onVoiceCommand(callback) {
+    const handler = (_e, payload) => callback(payload);
+    ipcRenderer.on('akansha:voice-command', handler);
+    return () => ipcRenderer.removeListener('akansha:voice-command', handler);
+  },
+  // Renderer -> tray: mirror the real voice state (tooltip + menu enablement).
+  reportVoiceState(state) { ipcRenderer.send('akansha:voice-state', String(state || 'STANDBY')); },
 });

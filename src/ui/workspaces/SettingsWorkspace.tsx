@@ -1,12 +1,36 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Mic, Eye, Shield, Database, Zap, BrainCircuit, Volume2 } from 'lucide-react';
+import { Mic, Eye, Shield, Database, Zap, BrainCircuit, Volume2, Power } from 'lucide-react';
 
 export const SettingsWorkspace = () => {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [ambientEnabled, setAmbientEnabled] = useState(false);
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [privacyLock, setPrivacyLock] = useState(false);
+  const [startup, setStartup] = useState<{ show: boolean; supported: boolean; enabled: boolean; busy: boolean; note?: string }>({ show: false, supported: false, enabled: false, busy: false });
+
+  // Desktop-only "Start with Windows" — reflects the REAL login-item state via the
+  // narrow preload bridge. Hidden entirely in the browser (no bridge), and shows an
+  // honest "unavailable" note when the packaged login-item API is unsupported.
+  useEffect(() => {
+    const bridge = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+    if (!bridge || typeof bridge.getStartup !== 'function') return;
+    let alive = true;
+    bridge.getStartup().then((s: any) => { if (alive) setStartup((p) => ({ ...p, show: true, supported: !!s?.supported, enabled: !!s?.enabled })); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const toggleStartup = async () => {
+    const bridge = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+    if (!bridge || !startup.supported) return;
+    setStartup((p) => ({ ...p, busy: true }));
+    try {
+      const next = !startup.enabled;
+      const r: any = await bridge.setStartup(next);
+      if (r?.ok) setStartup((p) => ({ ...p, enabled: !!r.enabled, busy: false }));
+      else setStartup((p) => ({ ...p, busy: false, note: r?.reason === 'not-packaged' ? 'Available in the installed app' : (r?.reason || 'unavailable') }));
+    } catch { setStartup((p) => ({ ...p, busy: false, note: 'unavailable' })); }
+  };
 
   const settings = [
     { key: 'voice', label: 'Voice Interaction', desc: 'Always-available voice interface', enabled: voiceEnabled, toggle: () => setVoiceEnabled(!voiceEnabled), icon: <Mic size={16} /> },
@@ -41,6 +65,27 @@ export const SettingsWorkspace = () => {
           </GlassSurface>
         ))}
       </div>
+
+      {startup.show && (
+        <GlassSurface className="p-5 rounded-2xl flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/15 to-purple-500/15 flex items-center justify-center">
+              <span className="text-cyan-300/80"><Power size={16} /></span>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-white/90">Start with Windows</h3>
+              <p className="text-xs text-white/30">Launch Akansha at sign-in (single instance, tray-ready; does not auto-record)</p>
+            </div>
+          </div>
+          <button
+            onClick={toggleStartup}
+            disabled={!startup.supported || startup.busy}
+            className={`w-11 h-6 rounded-full relative transition-colors duration-300 ${startup.enabled ? 'bg-cyan-500/30' : 'bg-white/10'} border ${startup.enabled ? 'border-cyan-400/30' : 'border-white/10'} ${(!startup.supported || startup.busy) ? 'opacity-40 cursor-not-allowed' : ''}`}
+          >
+            <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-cyan-300 to-purple-300 transition-transform duration-300 ${startup.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </GlassSurface>
+      )}
       
       {/* Emergency privacy lock */}
       <GlassSurface className={`p-6 rounded-3xl border-2 transition-all duration-500 ${privacyLock ? 'border-rose-500/40 bg-rose-500/5' : 'border-white/10'}`}>

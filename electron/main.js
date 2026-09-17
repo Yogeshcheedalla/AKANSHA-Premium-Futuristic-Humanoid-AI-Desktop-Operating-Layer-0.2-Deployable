@@ -12,13 +12,14 @@
 // ============================================================
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage, Tray, nativeImage } = require('electron');
 const { spawn, exec } = require('child_process');
 const http = require('http');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const logic = require('./desktop-logic');
 
 const isDev = !app.isPackaged;
 const APP_PATH = isDev ? app.getAppPath() : path.join(process.resourcesPath, 'app');
@@ -29,6 +30,9 @@ let serverProcess = null;
 let mainWindow = null;
 let quitting = false;
 let serverPort = 0;
+let tray = null;
+let minimizeToTrayEnabled = true;
+let voiceState = 'STANDBY';
 
 /**
  * Local desktop identity bootstrap.
@@ -225,6 +229,14 @@ function createWindow() {
     setLifecycle('ERROR', `Renderer crashed (${details.reason}).`);
   });
 
+  mainWindow.on('close', (e) => {
+    // Deliberate minimize-to-tray: hide instead of quitting unless the user
+    // explicitly quit or tray is unavailable. Prevents a zombie-less surprise and
+    // keeps the background assistant alive; tray Quit still truly terminates.
+    const action = logic.decideCloseAction({ isQuitting: quitting, minimizeToTrayEnabled: minimizeToTrayEnabled && !!tray });
+    if (action === 'hide') { e.preventDefault(); mainWindow.hide(); }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -248,16 +260,100 @@ function killBackend() {
   serverProcess = null;
 }
 
+// ── Startup (login item) — packaged executable only ────────────
+function getStartupStatus() {
+  try {
+    const s = app.getLoginItemSettings();
+    return { supported: app.isPackaged, enabled: !!(s && s.openAtLogin) };
+  } catch {
+    return { supported: false, enabled: false };
+  }
+}
+function setStartupEnabled(enabled) {
+  const args = logic.startupSettingsArgs({ enabled, isPackaged: app.isPackaged, exePath: process.execPath, platform: process.platform });
+  if (!args.supported) return { ok: false, reason: args.reason };
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!enabled });
+    return { ok: true, enabled: !!enabled };
+  } catch (e) {
+    return { ok: false, reason: e?.message || 'set-failed' };
+  }
+}
+
+// ── Tray (ONE instance) reflecting the authoritative voice state ─
+function trayImage() {
+  try {
+    const p = path.join(APP_PATH, 'build', 'icon.png');
+    if (fs.existsSync(p)) return nativeImage.createFromPath(p).resize({ width: 16, height: 16 });
+  } catch { /* fall through */ }
+  // A 1x1 transparent icon keeps the Tray alive where a real icon is absent.
+  return nativeImage.createEmpty();
+}
+function updateTray() {
+  if (!tray) return;
+  const { tooltip } = logic.mapVoiceStateToTray(voiceState);
+  try { tray.setToolTip(tooltip); } catch { /* ignore */ }
+  const startup = getStartupStatus();
+  const voiceActive = voiceState === 'LISTENING' || voiceState === 'PROCESSING' || voiceState === 'SPEAKING' || voiceState === 'INTERRUPTED';
+  const template = logic.buildTrayMenuTemplate({ voiceActive, startupEnabled: startup.enabled, startupSupported: startup.supported });
+  const menu = Menu.buildFromTemplate(
+    template.map((item) => {
+      if (item.type === 'separator') return { type: 'separator' };
+      if (item.id === 'start-with-windows') {
+        return { label: item.label, type: 'checkbox', checked: item.checked, enabled: item.enabled, click: (mi) => setStartupEnabled(mi.checked) };
+      }
+      return {
+        label: item.label,
+        enabled: item.enabled,
+        click: () => onTrayAction(item.id),
+      };
+    })
+  );
+  tray.setContextMenu(menu);
+}
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) { createWindow(); return; }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+function sendVoiceCommand(action) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('akansha:voice-command', { action });
+}
+function onTrayAction(id) {
+  switch (id) {
+    case 'open': showMainWindow(); break;
+    case 'start-listening': showMainWindow(); sendVoiceCommand('start'); break;
+    case 'stop-listening': sendVoiceCommand('stop'); break;
+    case 'status': showMainWindow(); break;
+    case 'settings': showMainWindow(); break;
+    case 'quit': quitting = true; app.quit(); break;
+    default: break;
+  }
+}
+function createTray() {
+  if (tray) return;
+  try {
+    tray = new Tray(trayImage());
+    tray.on('click', () => showMainWindow());
+    updateTray();
+  } catch { /* tray unsupported in this environment */ }
+}
+
 // ── Single instance ────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    // Restore/focus the EXISTING instance (never a second server/window/engine).
+    const action = logic.secondInstanceAction({
+      hasWindow: !!(mainWindow && !mainWindow.isDestroyed()),
+      isMinimized: !!(mainWindow && mainWindow.isMinimized()),
+      isHidden: !!(mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()),
+    });
+    if (action === 'create') { createWindow(); return; }
+    showMainWindow();
   });
 
   app.whenReady().then(() => {
@@ -273,8 +369,17 @@ if (!gotLock) {
     // session cookie. Only available inside the packaged/desktop app.
     ipcMain.handle('akansha:bootstrap-passphrase', () => getLocalAccessSecret());
 
+    // Narrow desktop IPC (no Node/FS exposure): startup + window + voice state.
+    ipcMain.handle('akansha:get-startup', () => getStartupStatus());
+    ipcMain.handle('akansha:set-startup', (_e, enabled) => setStartupEnabled(!!enabled));
+    ipcMain.on('akansha:voice-state', (_e, state) => { voiceState = String(state || 'STANDBY'); updateTray(); });
+    ipcMain.handle('akansha:show-window', () => { showMainWindow(); return { ok: true }; });
+    ipcMain.handle('akansha:hide-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); return { ok: true }; });
+    ipcMain.handle('akansha:quit', () => { quitting = true; app.quit(); return { ok: true }; });
+
     createWindow();
     startBackend();
+    createTray();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -282,11 +387,15 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', () => {
+    // With minimize-to-tray, closing the window hides it; the app stays alive in
+    // the tray. Only quit when the user explicitly quit (or tray is unavailable).
+    if (minimizeToTrayEnabled && tray) return;
     if (process.platform !== 'darwin') app.quit();
   });
 
   app.on('before-quit', () => {
     quitting = true;
+    try { if (tray) { tray.destroy(); tray = null; } } catch { /* ignore */ }
     killBackend();
   });
 

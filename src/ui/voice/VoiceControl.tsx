@@ -45,19 +45,42 @@ export function VoiceControl() {
     return () => { off(); };
   }, []);
 
-  const toggle = async () => {
+  const startSession = async () => {
     if (!audioEngine) return;
-    if (active || state === 'LISTENING' || state === 'PROCESSING' || state === 'SPEAKING' || state === 'INTERRUPTED') {
-      audioEngine.stop();
-      setActive(false);
-      setState('STANDBY');
-      return;
-    }
     const caps = audioEngine.capabilities();
     if (!caps.mic && !caps.asr) { setState('ERROR'); return; }
     await audioEngine.start();
     audioEngine.startListening();
   };
+  const stopSession = () => {
+    if (!audioEngine) return;
+    audioEngine.stop();
+    setActive(false);
+    setState('STANDBY');
+  };
+
+  const toggle = async () => {
+    if (!audioEngine) return;
+    if (active || state === 'LISTENING' || state === 'PROCESSING' || state === 'SPEAKING' || state === 'INTERRUPTED') stopSession();
+    else await startSession();
+  };
+
+  // Desktop bridge: the system tray drives the SAME authoritative AudioEngine
+  // (never a second microphone); the real voice state mirrors back to the tray.
+  useEffect(() => {
+    const bridge = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+    if (!bridge || typeof bridge.onVoiceCommand !== 'function') return;
+    const off = bridge.onVoiceCommand(async (p: { action?: string }) => {
+      if (p?.action === 'start') await startSession();
+      else if (p?.action === 'stop') stopSession();
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
+
+  useEffect(() => {
+    const bridge = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+    if (bridge && typeof bridge.reportVoiceState === 'function') { try { bridge.reportVoiceState(state); } catch { /* ignore */ } }
+  }, [state]);
 
   const Icon = state === 'ERROR' ? AlertTriangle : state === 'SPEAKING' ? Volume2 : active ? Mic : state === 'MUTED' ? MicOff : Mic;
   const busy = state === 'PROCESSING';
