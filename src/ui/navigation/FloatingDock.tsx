@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Mic, Compass, BrainCircuit, Database, Zap, ShieldCheck, Settings, Code2, Network, Boxes, Link2, Share2, Package, Gauge, Sparkles } from 'lucide-react';
+import { Compass, BrainCircuit, Database, Zap, ShieldCheck, Settings, Network, Boxes, Link2, Share2, Package, Gauge, Sparkles } from 'lucide-react';
+import { WORKSPACES } from './workspaces';
 
-export interface Workspace {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-}
+/** Presentation (icons) keyed by the canonical workspace id from `workspaces.ts`. */
+const ICON_BY_ID: Record<string, React.ReactNode> = {
+  command: <Compass size={18} />,
+  cognitive: <BrainCircuit size={18} />,
+  missions: <Zap size={18} />,
+  graph: <Share2 size={18} />,
+  repositories: <Package size={18} />,
+  agents: <BrainCircuit size={18} />,
+  integrations: <Network size={18} />,
+  providers: <Boxes size={18} />,
+  modelcenter: <Sparkles size={18} />,
+  connectors: <Link2 size={18} />,
+  memory: <Database size={18} />,
+  security: <ShieldCheck size={18} />,
+  scorecard: <Gauge size={18} />,
+  settings: <Settings size={18} />,
+};
 
 export const FloatingDock = ({
   activeWorkspace,
@@ -15,31 +28,16 @@ export const FloatingDock = ({
   activeWorkspace: string;
   onSelect: (id: string) => void;
 }) => {
-  const workspaces: Workspace[] = [
-    { id: 'command', label: 'Command', icon: <Compass size={18} /> },
-    { id: 'cognitive', label: 'Cognitive Layer', icon: <BrainCircuit size={18} /> },
-    { id: 'missions', label: 'Missions', icon: <Zap size={18} /> },
-    { id: 'graph', label: 'Architecture Graph', icon: <Share2 size={18} /> },
-    { id: 'repositories', label: 'Repository Fabric', icon: <Package size={18} /> },
-    { id: 'agents', label: 'Agents', icon: <BrainCircuit size={18} /> },
-    { id: 'integrations', label: 'Capability Fabric', icon: <Network size={18} /> },
-    { id: 'providers', label: 'AI Providers', icon: <Boxes size={18} /> },
-    { id: 'modelcenter', label: 'Model Center', icon: <Sparkles size={18} /> },
-    { id: 'connectors', label: 'Connectors', icon: <Link2 size={18} /> },
-    { id: 'memory', label: 'Memory', icon: <Database size={18} /> },
-    { id: 'security', label: 'Security', icon: <ShieldCheck size={18} /> },
-    { id: 'scorecard', label: 'Scorecard', icon: <Gauge size={18} /> },
-    { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
-  ];
-
   return (
-    <nav className="fixed left-4 top-1/2 -translate-y-1/2 z-50 hidden md:flex flex-col gap-2">
-      {workspaces.map((w) => (
+    <nav className="fixed left-4 top-1/2 -translate-y-1/2 z-50 hidden md:flex flex-col gap-2" aria-label="Akansha workspaces">
+      {WORKSPACES.map((w) => (
         <button
           key={w.id}
           onClick={() => onSelect(w.id)}
           className="group relative"
           title={w.label}
+          aria-label={w.label}
+          aria-current={activeWorkspace === w.id ? 'page' : undefined}
         >
           <GlassSurface
             active={activeWorkspace === w.id}
@@ -47,7 +45,7 @@ export const FloatingDock = ({
             className="w-12 h-12 flex items-center justify-center rounded-xl transition-all duration-300 hover:scale-110"
           >
             <span className={`transition-colors duration-300 ${activeWorkspace === w.id ? 'text-cyan-300' : 'text-white/50 group-hover:text-white/80'}`}>
-              {w.icon}
+              {ICON_BY_ID[w.id]}
             </span>
           </GlassSurface>
           <span className="absolute left-14 top-1/2 -translate-y-1/2 text-xs text-white/60 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -58,3 +56,4 @@ export const FloatingDock = ({
     </nav>
   );
 };
+

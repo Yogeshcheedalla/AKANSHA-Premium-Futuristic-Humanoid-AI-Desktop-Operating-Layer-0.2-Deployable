@@ -4,13 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { GlassSurface } from '@/ui/core/GlassSurface';
 import { NeuralBackground } from '@/ui/core/NeuralBackground';
 import { FloatingDock } from '@/ui/navigation/FloatingDock';
+import { useWorkspaceRoute } from '@/ui/navigation/useWorkspaceRoute';
 import { CommandWorkspace } from '@/ui/workspaces/CommandWorkspace';
 import { CognitiveWorkspace } from '@/ui/workspaces/CognitiveWorkspace';
 import { ScorecardWorkspace } from '@/ui/workspaces/ScorecardWorkspace';
 import { MissionsWorkspace } from '@/ui/workspaces/MissionsWorkspace';
 import { AgentsWorkspace } from '@/ui/workspaces/AgentsWorkspace';
 import { MemoryWorkspace } from '@/ui/workspaces/MemoryWorkspace';
-import { DevOpsWorkspace } from '@/ui/workspaces/DevOpsWorkspace';
 import { SettingsWorkspace } from '@/ui/workspaces/SettingsWorkspace';
 import { IntegrationsWorkspace } from '@/ui/workspaces/IntegrationsWorkspace';
 import { ProvidersWorkspace } from '@/ui/workspaces/ProvidersWorkspace';
@@ -30,7 +30,7 @@ import { Zap, Download, ArrowLeft } from 'lucide-react';
  * sign-in gate instead.
  */
 export default function AppClient() {
-  const [workspace, setWorkspace] = useState('command');
+  const { workspace, select } = useWorkspaceRoute();
   const [systemState] = useState<'online' | 'offline' | 'degraded'>('online');
   const [currentMission] = useState('No active missions');
   const [onboard, setOnboard] = useState(false);
@@ -52,7 +52,6 @@ export default function AppClient() {
       case 'modelcenter': return <ModelCenter />;
       case 'connectors': return <ConnectorsWorkspace />;
       case 'memory': return <MemoryWorkspace />;
-      case 'devops': return <DevOpsWorkspace />;
       case 'security':
         return (
           <div className="p-8 max-w-4xl mx-auto">
@@ -95,7 +94,7 @@ export default function AppClient() {
         {onboard && <FirstRunOnboarding onDone={() => setOnboard(false)} />}
       </AnimatePresence>
 
-      <FloatingDock activeWorkspace={workspace} onSelect={setWorkspace} />
+      <FloatingDock activeWorkspace={workspace} onSelect={select} />
 
       <header className="fixed top-0 left-0 right-0 z-40 px-6 py-4 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-3 pointer-events-auto">
