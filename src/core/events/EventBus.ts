@@ -40,6 +40,7 @@ export type AkanshaEventType =
   | 'auth.denied'
   | 'auth.revoked'
   | 'auth.bootstrap_created'
+  | 'email.dispatched'
   | 'execution.started'
   | 'execution.evidence'
   | 'voice.state_changed'
