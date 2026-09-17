@@ -149,6 +149,9 @@ class AuthManager {
   }
 
   authEnabled(): boolean {
+    // Auth is ALWAYS enforced in production. The disable flag is a local-development
+    // convenience only and must never mint a bypass admin on a deployed build.
+    if (process.env.NODE_ENV === 'production') return true;
     return process.env.AKANSHA_AUTH_DISABLED !== 'true';
   }
 }
