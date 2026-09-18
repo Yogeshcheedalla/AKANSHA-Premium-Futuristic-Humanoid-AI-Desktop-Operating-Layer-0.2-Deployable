@@ -20,6 +20,18 @@ Audit-first, evidence-based. Source HEAD `c39b524` (baseline `84ac62e`). **No pu
 > microphone/ASR/TTS round-trip remains **BLOCKED** (needs a real mic + provider creds).
 > No second voice pipeline / TTS authority / orchestrator was introduced.
 
+> **Phase 5 delta (desktop control):** the first REAL Windows capability
+> `desktop.app.launch` is wired through the Action Fabric, reusing the existing
+> `appRegistry` (allowlist resolver) + `WindowsComputerUseProvider` (real Win32 launch +
+> window/pid observation) — no second orchestrator/permission/verification engine. It is
+> confirmation-gated (`requiresConfirmation`), rejects shell metacharacters (no injection),
+> only launches allowlisted apps, and is **VERIFIED only on observed process evidence**
+> (NO EVIDENCE = NO SUCCESS). **REAL_VERIFIED on this Windows machine**: dispatching
+> "notepad" returned COMPLETED with pid 26312 + `C:\Windows\System32\notepad.exe`, and an
+> independent `Get-Process` confirmed the same pid. Windows-only (`desktopControlStatus` →
+> UNAVAILABLE off win32). 8 fabric tests (success, unconfirmed, injection-rejected, unknown,
+> no-process, non-Windows, idempotency, status).
+
 ## 1. Executive summary
 Akansha is **not** a static mockup at the backend: **all 31 `/api/*` routes import real `src/core` singletons** (only `/api/health` is a status endpoint by design). The previously-fake sidebar panels (Memory/Agents/Missions/Security/Settings) were replaced this session with real singleton-backed endpoints + tests. The dominant gaps are **persistence** (in-memory; Postgres not connected) and **live external execution** (providers/MCP/models/voice/GPU) which are real code but **BLOCKED on credentials/hardware** — not fake. One genuine MOCK remains (`DevOpsWorkspace`, orphaned).
 
