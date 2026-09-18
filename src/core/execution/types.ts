@@ -68,6 +68,12 @@ export interface WindowObservation {
   text?: string;
   /** All top-level window titles currently open (for diagnostics). */
   windows?: string[];
+  /** focus(): the target was OBSERVED as the foreground window. */
+  foreground?: boolean;
+  /** focus(): process id of the actual foreground window (evidence). */
+  foregroundPid?: number;
+  /** focus(): process id of the requested target window. */
+  targetPid?: number;
 }
 
 /** Structured evidence produced by every executed action. */

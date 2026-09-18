@@ -133,3 +133,21 @@ Evidence: `masterOrchestratorDesktop.test.ts` (routes `"open notepad"`/`"close p
 
 ### 18.5 Production status — **BLOCKED (not faked)**
 Desktop + fabric changes and the durable-DB migration/harness are **local commits only**. Production cannot contain them until pushed, and pushing is gated on explicit human approval. Production persistence additionally needs a **provisioned managed Postgres + a non-superuser app role + `DATABASE_URL` set server-side** (RLS is only meaningful when the app connects as the least-privilege role, never as a superuser) — none of which exists in Vercel yet. Therefore **production health / production API verification = BLOCKED**, and no deployment was performed.
+
+---
+
+## 19. Phase 6b delta — `desktop.window.focus`, universal-fabric design, landing (2026-09-19)
+
+### 19.1 Third capability: `desktop.window.focus` — **REAL_BUT_UNVERIFIED (live)** / unit-verified through the fabric
+Same ONE `ActionRegistry`. A real `focus` op in `WindowsComputerUseProvider` restores + `SetForegroundWindow`s the allowlisted window (synthetic ALT to defeat the foreground lock) and **observes** the foreground window handle equals the target handle; COMPLETED only on that observed evidence, else `APP_NOT_FOUND` (no window) / `VERIFICATION_FAILED` (present but not foregrounded). Command path extended: `mapToDesktopAction` recognises "focus/activate/raise/switch to <app>" and "bring <app> to front" → `desktop.window.focus`; `IntentEngine` command verbs extended so these classify as `command` (single authority preserved — no new parser).
+Live result on this machine: the fabric returned **FAILED**, NOT a false success — this non-interactive automation session is blocked by the Windows foreground-lock, so the foreground effect could not be demonstrated here. Marked **REAL_BUT_UNVERIFIED** per the spec (hardware/session-dependent), **not** simulated. `desktop.app.launch` and `desktop.app.close` remain **REAL_VERIFIED** (real pid + OS `Get-Process` confirmation this session).
+Evidence: `desktopWindowFocus.test.ts` (6 unit tests: verified success, not-foreground→FAILED, no-window→APP_NOT_FOUND, unconfirmed→AUTH_REQUIRED, non-Windows→UNAVAILABLE, idempotency); `desktopCommands.test.ts` (+focus mappings & injection); `masterOrchestratorDesktop.test.ts` (+focus routed through fabric).
+
+### 19.2 Universal Tool + Runtime + Device Fabric — **DESCRIPTIVE_ONLY (authoritative design)**
+Added `AKANSHA_UNIVERSAL_FABRIC.md`: the honest architecture/roadmap for the broader vision — Akansha stays the single decision authority; OpenWorker/Browser Use/Chrome DevTools MCP/OpenHands/Mem0/scrcpy/Appium are **adapters behind the Action Fabric, never competing orchestrators**; explicit capability **permission scopes** (read-only ✅ / mutating ⚠ approval / credential-extraction & account-security 🔴 human-only); a device registry; a declarative, verified skill/dependency installer contract. Every stage lists its real BLOCKER (credentials, GPU, a signed keystore, a macOS/Apple toolchain, an interactive device). **No component was fabricated as installed/working.**
+
+### 19.3 Landing — **truthful**
+Landing now states Windows desktop control (app launch + close) as **verified** and window focus / browser / device control as **in progress**, with macOS/Linux/iOS still honest "build in progress" (PWA for mobile). No availability was added that isn't real.
+
+### 19.4 Gates (this session)
+`npm test` **321/321** (+9 focus-related) · `tsc --noEmit` clean · `next build` OK · `eslint` **0 errors** · `git diff --check` clean. LOCAL COMMIT ONLY — nothing pushed/deployed.

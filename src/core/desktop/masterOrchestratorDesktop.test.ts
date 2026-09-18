@@ -75,6 +75,27 @@ test('"close paint" is executed + verified through the Action Fabric (COMPLETED)
   }
 });
 
+test('"focus notepad" is executed + verified through the Action Fabric (COMPLETED)', async () => {
+  let focused = 0;
+  actionRegistry.register({
+    actionId: 'desktop.window.focus', capabilityId: 'desktop.control', requiresConfirmation: true,
+    execute: async () => {
+      focused++;
+      return { output: { found: true, foreground: true }, evidence: { kind: 'window', observed: true, summary: 'focused notepad (foreground) [fake]', data: { app: 'notepad', foregroundPid: 42 } } };
+    },
+    verify: ({ evidence }) => (evidence && evidence.observed && evidence.kind === 'window'
+      ? { verified: true, method: 'foregroundObserved', reason: evidence.summary }
+      : { verified: false, method: 'foregroundObserved', reason: 'no evidence' }),
+  });
+  try {
+    const m = await runCommand('focus notepad');
+    assert.equal(focused, 1, 'the fabric must have invoked focus exactly once');
+    assert.equal(m.status, 'COMPLETED');
+  } finally {
+    registerDesktopCapabilities();
+  }
+});
+
 test('fabric verification failure NEVER becomes mission success', async () => {
   // A contract that "executes" but returns no observed evidence must not COMPLETED.
   actionRegistry.register({

@@ -26,6 +26,8 @@ using System.Runtime.InteropServices;
 public class AkanshaWin32 {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int n);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 }
 "@
 $AE = [System.Windows.Automation.AutomationElement]
@@ -138,12 +140,25 @@ try {
 
   if ($action -eq 'focus') {
     $w = Find-ByTitle $req.titleHint
-    $t = $null
+    $t = $null; $fg = $false; $fgPid = $null; $tgtPid = $null
     if ($w) {
-      [void][AkanshaWin32]::SetForegroundWindow($w.Current.NativeWindowHandle)
+      $hwnd = $w.Current.NativeWindowHandle
+      $tgtPid = $w.Current.ProcessId
       $t = $w.Current.Name
+      for ($i = 0; $i -lt 10; $i++) {
+        [void][AkanshaWin32]::ShowWindowAsync($hwnd, 9)      # SW_RESTORE
+        # Synthetic ALT tap defeats the SetForegroundWindow foreground lock.
+        [AkanshaWin32]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+        [AkanshaWin32]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+        [void][AkanshaWin32]::SetForegroundWindow($hwnd)
+        Start-Sleep -Milliseconds 220
+        $fgw = [AkanshaWin32]::GetForegroundWindow()
+        try { $fgPid = $AE::FromHandle($fgw).Current.ProcessId } catch { $fgPid = $null }
+        # Reliable signal: the foreground WINDOW itself is the target window handle.
+        if ([long]$fgw -eq [long]$hwnd) { $fg = $true; break }
+      }
     }
-    Out @{ ok=[bool]$w; found=[bool]$w; title=$t }
+    Out @{ ok=$fg; found=[bool]$w; foreground=$fg; title=$t; foregroundPid=$fgPid; targetPid=$tgtPid }
     return
   }
 
@@ -234,6 +249,10 @@ interface PsResult {
   wasRunning?: boolean;
   killedPid?: number;
   remaining?: number[];
+  // 'focus' observation fields
+  foreground?: boolean;
+  foregroundPid?: number;
+  targetPid?: number;
 }
 
 export class WindowsComputerUseProvider implements ComputerUseProvider {
@@ -325,7 +344,13 @@ export class WindowsComputerUseProvider implements ComputerUseProvider {
   async focus(target: string): Promise<WindowObservation> {
     const spec = this.spec(target);
     const r = await this.run({ action: 'focus', titleHint: spec ? spec.titleHint : target });
-    return { found: !!r.found, title: r.title ?? undefined };
+    return {
+      found: !!r.found,
+      title: r.title ?? undefined,
+      foreground: !!r.foreground,
+      foregroundPid: r.foregroundPid ?? undefined,
+      targetPid: r.targetPid ?? undefined,
+    };
   }
 
   async observe(target?: string): Promise<WindowObservation> {

@@ -18,6 +18,7 @@ export function desktopControlStatus(platform: string = process.platform): 'READ
 
 interface Launcher { launch(app: string): Promise<{ found: boolean; pid?: number; title?: string }>; }
 interface Closer { close(app: string): Promise<ProcessCloseResult>; }
+interface Focuser { focus(app: string): Promise<{ found: boolean; foreground?: boolean; title?: string; foregroundPid?: number; targetPid?: number }>; }
 
 /**
  * Register the real Windows desktop capabilities `desktop.app.launch` and
@@ -30,12 +31,14 @@ export function registerDesktopCapabilities(deps: {
   resolve?: (q: string) => AppSpec | null;
   launcher?: Launcher;
   closer?: Closer;
+  focuser?: Focuser;
   platform?: string;
 } = {}) {
   const registry = deps.registry ?? actionRegistry;
   const resolve = deps.resolve ?? resolveApp;
   const launcher = deps.launcher ?? windowsComputerUseProvider;
   const closer = deps.closer ?? windowsComputerUseProvider;
+  const focuser = deps.focuser ?? windowsComputerUseProvider;
   const platform = deps.platform ?? process.platform;
 
   const fail = (code: FailureCode, stage: string, message: string) =>
@@ -105,6 +108,37 @@ export function registerDesktopCapabilities(deps: {
     verify: ({ evidence }) => evidence && evidence.observed && evidence.kind === 'process' && !!evidence.data
       ? { verified: true, method: 'processTerminated', reason: evidence.summary }
       : { verified: false, method: 'processTerminated', reason: 'No observed process-termination evidence' },
+  });
+
+  // ── desktop.window.focus ──────────────────────────────────────────────
+  registry.register({
+    actionId: 'desktop.window.focus',
+    capabilityId: 'desktop.control',
+    requiresConfirmation: true, // changes OS foreground → authorization through the fabric
+    execute: async (req: ActionRequest) => {
+      const app = (req.payload || {}).application;
+      if (platform !== 'win32') return fail('DESKTOP_CONTROL_UNAVAILABLE', 'platform', 'Desktop control is Windows-only in this build.');
+      if (!isSafeAppName(app)) return fail('UNKNOWN', 'validate', 'Application name is empty or contains disallowed characters.');
+      if (desktopControlStatus(platform) !== 'READY') return fail('DESKTOP_CONTROL_UNAVAILABLE', 'platform', 'Desktop control unavailable.');
+
+      const spec = resolve(app);
+      if (!spec) return fail('APP_NOT_FOUND', 'resolve', `Application not found in the allowed registry: ${app}`);
+
+      const obs = await focuser.focus(app);
+      if (!obs.found) return fail('APP_NOT_FOUND', 'execute', `${app} has no open window to focus.`);
+      if (!obs.foreground) return fail('VERIFICATION_FAILED', 'verify', `${app}'s window was not confirmed as the foreground window.`);
+
+      const evidence: Evidence = {
+        kind: 'window', observed: true,
+        summary: `focused ${app}${obs.title ? ` — "${obs.title}"` : ''} (foreground pid ${obs.foregroundPid})`,
+        data: { app, title: obs.title ?? null, foregroundPid: obs.foregroundPid ?? null, targetPid: obs.targetPid ?? null },
+      };
+      return { output: obs, evidence };
+    },
+    // COMPLETED only if the target window was OBSERVED in the foreground.
+    verify: ({ evidence }) => evidence && evidence.observed && evidence.kind === 'window' && !!evidence.data
+      ? { verified: true, method: 'foregroundObserved', reason: evidence.summary }
+      : { verified: false, method: 'foregroundObserved', reason: 'No observed foreground-window evidence' },
   });
 
   return registry;

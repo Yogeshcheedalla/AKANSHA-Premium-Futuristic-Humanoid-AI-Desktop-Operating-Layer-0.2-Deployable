@@ -11,12 +11,14 @@ import { isSafeAppName } from './desktopCapabilities';
  * the existing orchestrator/planner path. Unknown text NEVER becomes shell execution.
  */
 export interface DesktopActionMap {
-  actionId: 'desktop.app.launch' | 'desktop.app.close';
+  actionId: 'desktop.app.launch' | 'desktop.app.close' | 'desktop.window.focus';
   application: string;
 }
 
 const LAUNCH = /^\s*(?:please\s+|can you\s+)?(?:open|launch|start|run|bring up|fire up)\s+(.+?)\s*[.!?,]*$/i;
 const CLOSE = /^\s*(?:please\s+|can you\s+)?(?:close|quit|exit|kill|terminate|stop|shut)\s+(.+?)\s*[.!?,]*$/i;
+const FOCUS = /^\s*(?:please\s+|can you\s+)?(?:focus|activate|raise|foreground|switch to)\s+(.+?)\s*[.!?,]*$/i;
+const FOCUS_BRING = /^\s*(?:please\s+|can you\s+)?bring\s+(.+?)\s+to (?:the )?front\s*[.!?,]*$/i;
 
 /** Rejects anything that is not a single, plain application target. */
 const NOT_A_PLAIN_APP = /[;&|<>`$]|\band\b|\bthen\b|,/i;
@@ -25,12 +27,14 @@ export function mapToDesktopAction(text: string): DesktopActionMap | null {
   const t = (text || '').trim();
   if (!t) return null;
 
-  let kind: 'launch' | 'close' | null = null;
+  let kind: 'launch' | 'close' | 'focus' | null = null;
   let rest = '';
   let m: RegExpMatchArray | null;
 
   if ((m = t.match(LAUNCH))) { kind = 'launch'; rest = m[1]; }
   else if ((m = t.match(CLOSE))) { kind = 'close'; rest = m[1]; }
+  else if ((m = t.match(FOCUS_BRING))) { kind = 'focus'; rest = m[1]; }
+  else if ((m = t.match(FOCUS))) { kind = 'focus'; rest = m[1]; }
   else return null;
 
   rest = rest.replace(/\s+/g, ' ').trim();
@@ -41,8 +45,12 @@ export function mapToDesktopAction(text: string): DesktopActionMap | null {
   const spec = resolveApp(rest);
   if (!spec) return null; // unknown → never invent, let the orchestrator handle it
 
+  const actionId = kind === 'launch' ? 'desktop.app.launch'
+    : kind === 'close' ? 'desktop.app.close'
+    : 'desktop.window.focus';
+
   return {
-    actionId: kind === 'launch' ? 'desktop.app.launch' : 'desktop.app.close',
+    actionId,
     // Canonical alias so "text editor" → "notepad" deterministically.
     application: spec.aliases[0],
   };

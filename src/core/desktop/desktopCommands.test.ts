@@ -31,3 +31,14 @@ test('non-launch/close phrasing is not captured', () => {
   assert.equal(mapToDesktopAction('what is the weather'), null);
   assert.equal(mapToDesktopAction('write a report about sales'), null);
 });
+
+test('focus/activate/switch-to map to desktop.window.focus', () => {
+  assert.deepEqual(mapToDesktopAction('focus notepad'), { actionId: 'desktop.window.focus', application: 'notepad' });
+  assert.deepEqual(mapToDesktopAction('activate calculator'), { actionId: 'desktop.window.focus', application: 'calculator' });
+  assert.deepEqual(mapToDesktopAction('switch to paint'), { actionId: 'desktop.window.focus', application: 'paint' });
+  assert.deepEqual(mapToDesktopAction('bring notepad to front'), { actionId: 'desktop.window.focus', application: 'notepad' });
+});
+
+test('focus with shell-like target is rejected → null', () => {
+  assert.equal(mapToDesktopAction('focus notepad; whoami'), null);
+});

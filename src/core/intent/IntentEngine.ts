@@ -9,7 +9,7 @@ export interface IntentResult {
 
 /** Imperative verbs that indicate a concrete, executable action. */
 const IMPERATIVE_VERBS =
-  /\b(open|close|launch|start|stop|kill|terminate|run|execute|write|create|build|generate|make|search|find|look up|save|read|click|type|send|install|uninstall|delete|remove|move|copy|rename|download|upload|summarize|schedule|monitor|watch|alert|remember|forget|format|wipe|erase|nuke|truncate|drop|purge|reset)\b/gi;
+  /\b(open|close|launch|start|stop|kill|terminate|run|execute|write|create|build|generate|make|search|find|look up|save|read|click|type|send|install|uninstall|delete|remove|move|copy|rename|download|upload|summarize|schedule|monitor|watch|alert|remember|forget|format|wipe|erase|nuke|truncate|drop|purge|reset|focus|activate|raise|foreground|switch|bring)\b/gi;
 
 /** Explicit sequencing markers that unambiguously mean "multi-step". */
 const SEQUENCE_MARKERS =
@@ -20,7 +20,7 @@ const ARTIFACT = /\b(report|document|file|folder|email|message|note|post|code|sc
 
 export class IntentEngine {
   private conversationRe = /^(hello|hi|hey|good morning|good evening|good afternoon|how are you|how's it going|what's up|sup|yo|thanks|thank you)\b/i;
-  private commandRe = /^(open|close|start|stop|run|launch|execute|kill|terminate|pause|resume|show|hide|minimize|maximize)\b/i;
+  private commandRe = /^(open|close|start|stop|run|launch|execute|kill|terminate|pause|resume|show|hide|minimize|maximize|focus|activate|raise|foreground|switch|bring)\b/i;
   private researchRe = /^(research|find|search|look up|investigate|analyze|study|what(?:'s| is) the latest|latest news)\b/i;
   private codingRe = /^(code|program|write (?:code|a (?:script|program|function))|create (?:a )?(?:script|program|function)|build (?:a |an |this |the )?(?:feature|app|application|function|module|api|website|program|code)|develop|debug|refactor|fix (?:the |this )?(?:bug|code|error))\b/i;
   private automationRe = /^(automate|schedule|trigger|monitor|watch|alert me)\b/i;
