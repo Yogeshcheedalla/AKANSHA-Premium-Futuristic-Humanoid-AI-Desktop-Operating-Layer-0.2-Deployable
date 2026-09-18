@@ -2,6 +2,12 @@
 
 Audit-first, evidence-based. Source HEAD `c39b524` (baseline `84ac62e`). **No push, no deploy, no release/Vercel/`AKANSHA_RELEASES` change.** Statuses: REAL_VERIFIED · REAL_BUT_UNVERIFIED · PARTIAL · MOCK · PLACEHOLDER · DESCRIPTIVE_ONLY · BLOCKED.
 
+> **Phase 3 delta (commits `296e5e7`,`8a3dbf5`):** the Action Fabric substrate + truthful
+> status engine + durable-state schema/migration are now implemented. `memory.write` is a
+> REAL capability wired end-to-end through the fabric (execute → read-back verification →
+> event → best-effort persistence), integration-tested. Durable DB persistence remains
+> **BLOCKED** until a Postgres + `DATABASE_URL` are provisioned (see `AKANSHA_PHASE3_PLAN.md`).
+
 ## 1. Executive summary
 Akansha is **not** a static mockup at the backend: **all 31 `/api/*` routes import real `src/core` singletons** (only `/api/health` is a status endpoint by design). The previously-fake sidebar panels (Memory/Agents/Missions/Security/Settings) were replaced this session with real singleton-backed endpoints + tests. The dominant gaps are **persistence** (in-memory; Postgres not connected) and **live external execution** (providers/MCP/models/voice/GPU) which are real code but **BLOCKED on credentials/hardware** — not fake. One genuine MOCK remains (`DevOpsWorkspace`, orphaned).
 
