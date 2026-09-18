@@ -64,10 +64,10 @@ Akansha is **not** a static mockup at the backend: **all 31 `/api/*` routes impo
 | 17 | Settings | SettingsWorkspace | desktop IPC | startup via preload bridge (real); prefs persisted | real | — | PARTIAL (only Start-with-Windows is wired; privacy lock disabled honestly) |
 | 18 | Voice | VoiceControl/AudioEngine | VoicePipeline | mic→ASR→orchestrator→TTS (single authority) | real logic | unit-verified; hardware-blocked | REAL_BUT_UNVERIFIED / **BLOCKED** (needs mic + STT/TTS provider) |
 | 19 | Desktop control | — | execute + WindowsComputerUseProvider | real Windows actions | observe+verify | — | REAL_BUT_UNVERIFIED (needs desktop session; permission-gated) |
-| 20 | DevOps (orphan) | DevOpsWorkspace | none (not in dock) | **hardcoded** `status:'online', latency:'67ms', health:96` | none | — | **MOCK / PLACEHOLDER — dead code, recommend remove** |
+| 20 | DevOps (orphan) | DevOpsWorkspace | none (not in dock) | **hardcoded** `status:'online', latency:'67ms', health:96` | none | — | **REMOVED (Phase 7)** — dead mock file deleted; no MOCK remains |
 
 ## 6. Button / action inventory (evidence)
-Frontend scan for empty handlers / fake states found **no `onClick={() => {}}`** and no fake progress bars; matches were input `placeholder=` attributes, "nothing is faked" comments, and AbortController `setTimeout`s. The only hardcoded status array is `DevOpsWorkspace` (orphan). Panels consume `/api/*` with real error/empty/needsAuth states (Slice 2).
+Frontend scan for empty handlers / fake states found **no `onClick={() => {}}`** and no fake progress bars; matches were input `placeholder=` attributes, "nothing is faked" comments, and AbortController `setTimeout`s. The only hardcoded status array was `DevOpsWorkspace` (orphan) — **removed in Phase 7; no hardcoded status arrays remain**. Panels consume `/api/*` with real error/empty/needsAuth states (Slice 2).
 
 ## 7. API inventory (31 routes)
 All import real `src/core` singletons (counts above). None return fabricated success; `/api/health` is the intentional status endpoint. Protected routes are `authorize()`-gated (401/403 verified).
@@ -79,7 +79,7 @@ All import real `src/core` singletons (counts above). None return fabricated suc
 Postgres/Drizzle schema exists; `DATABASE_URL` unset → **persistence:disabled**. Runtime state is in-memory. Durable multi-device sessions, mission/job persistence, model registry durability = **PARTIAL/missing** (needs DB provisioning — human action).
 
 ## 10. Descriptive-only / mock / placeholder
-- **MOCK:** `DevOpsWorkspace` (hardcoded, orphaned).
+- **MOCK:** none remain — `DevOpsWorkspace` (the last hardcoded, orphaned mock) was **deleted in Phase 7**.
 - **DESCRIPTIVE_ONLY:** marketing landing copy (acceptable as landing, now truthful about platform availability).
 - No fake "connected/online/ready/installed" states remain in the dock panels (Slice 2 + this session).
 
@@ -204,3 +204,50 @@ fresh build is a separate, connection-dependent human-gated step, not faked as d
 
 ### 20.5 Gates (this session)
 `npm test` **328/328** (+7 accelerator) · `tsc --noEmit` clean · `next build` OK · `eslint` **0 errors** · `git diff --check` clean. LOCAL COMMIT ONLY — nothing further pushed/deployed.
+
+---
+
+## 21. Phase 7 — Windows release published + verified, UI truthfulness, CI status (2026-09-19)
+
+### 21.1 Windows download — PUBLISHED + BYTE-VERIFIED (supersedes §20.4 "held")
+Published the fresh build to GitHub release **v3.0.1** (installer + portable, both `state:uploaded`),
+repointed `AKANSHA_RELEASES`, and redeployed production. Independent verification: the public
+installer URL returns **HTTP 200 / 160,414,560 B** and its **SHA‑256 `d57c55c2…83304` matches the
+local build exactly**; live `/api/releases` reports `installer:true:160414560`, `portable:true:160123115`
+(the endpoint only marks `available` after its own HEAD against GitHub). The earlier "held for proxy"
+note is resolved — the prior upload failure was a URL‑template bug (`{?name,label}`), not the proxy.
+
+### 21.2 UI truthfulness — verified, no fake states, last MOCK removed
+- **Model Center** (`ModelCenterWorkspace.tsx`) is a real consumer: it fetches `/api/ai/setup`
+  (which now runs the live accelerator probe), renders per‑model card state via
+  `resolveCardState` (READY only after a real inference pass), shows hardware + CompatibilityEngine
+  ratings, and drives `/api/ai/mode` + `/api/ai/install`. No UI change required — it already reflects
+  the hardware‑grounded recommendation truthfully.
+- **Command path** routes "open/close/focus <app>" through `MasterOrchestrator → mapToDesktopAction →
+  ActionDispatcher` (fabric), so the existing command UI exercises the real capability; no separate
+  desktop dashboard was added (per the no‑fake‑UI rule).
+- **Removed the last MOCK:** deleted the orphaned `DevOpsWorkspace.tsx` (hardcoded service
+  latencies/health, not in the dock). No MOCK / fake status arrays remain in the UI.
+- **Repo fix:** force‑tracked `build/icon.png` (the electron build‑resource wrongly excluded by the
+  blanket `build/` gitignore), so clean‑checkout desktop builds get the icon.
+
+### 21.3 Cross‑platform CI (release tag auto‑triggered `desktop-build`) — honest status
+- **Linux: SUCCESS** — `.AppImage` + `.deb` built on the runner.
+- **Windows CI: FAIL** — `next build` hits a Windows **MAX_PATH** limit on the very long repo dir
+  inside `.next` chunks. CI‑only and irrelevant to production (the shipped Windows binaries came from a
+  local build and are the byte‑verified ones in 21.1).
+- **macOS CI: FAIL** — and even a green build is an unsigned `.dmg`; distribution needs an Apple
+  Developer ID + notarization (user secrets).
+- **Android CI: FAIL** at `setup-android`; a Play‑uploadable AAB also needs the user's release keystore.
+- **Publishing the CI Linux artifact to the public download is BLOCKED here**: the git credential is a
+  GitHub‑App token scoped to `gist, repo, workflow` and cannot read Actions artifacts (404). The correct
+  path is an in‑CI publish step using the workflow's own `GITHUB_TOKEN` (approvable), or the user
+  fetching the artifact — not fabricated.
+
+### 21.4 Production status
+Web app + Windows installer/portable are **live and verified**. Production **database remains BLOCKED**
+(no `DATABASE_URL`; needs a managed Postgres + non‑superuser role). macOS/iOS/signed‑Android remain
+BLOCKED on toolchain/secrets. Model install→inference remains gated on a real download + inference run.
+
+### 21.5 Gates (this session)
+`npm test` **328/328** · `tsc --noEmit` clean · `next build` OK · `eslint` **0 errors** · `git diff --check` clean. Committed and pushed (`main` in sync with `origin/main`).
