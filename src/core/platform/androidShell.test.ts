@@ -41,6 +41,19 @@ test('mobile webDir is the minimal shell and bundles NO desktop installer binari
   assert.ok(fs.existsSync(path.join(ROOT, 'public/downloads')), 'web/Windows downloads folder preserved');
 });
 
+test('the local fallback boot page forwards to the real hosted origin (never a dead offline page)', () => {
+  const cfg = JSON.parse(read('capacitor.config.json'));
+  const html = read('mobile-app/index.html');
+  const ORIGIN = cfg.server.url as string;
+  // With server.url set, Capacitor's Bridge loads the remote origin directly (Bridge.java 626-644);
+  // the bundled page is only a dormant fallback — so it MUST forward to the same origin, not strand
+  // the user on "Connecting…".
+  assert.ok(html.includes(ORIGIN), 'fallback forwards to the exact configured production origin');
+  assert.ok(/location\.replace|http-equiv=["']refresh/i.test(html), 'fallback actively navigates to the production origin');
+  // It must not be a self-contained fake landing (no local app shell / no localhost target).
+  assert.ok(!/localhost|127\.0\.0\.1/.test(html), 'fallback never points at localhost');
+});
+
 test('the mobile shell stays Electron-free and reuses the shared /api contract (one brain)', () => {
   // src/ must not depend on Electron — that is the property that lets a plain
   // Capacitor WebView pointed at the hosted origin reuse the entire web app + /api.
