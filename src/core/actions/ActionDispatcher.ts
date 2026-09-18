@@ -3,6 +3,7 @@ import { riskEngine } from '@/core/security/RiskEngine';
 import { eventBus } from '@/core/events/EventBus';
 import { actionRegistry, type ActionRegistry } from './ActionRegistry';
 import { verify, requireObservedEvidence } from './VerificationEngine';
+import { persistActionExecution } from '@/core/persistence/actionStore';
 import type { ActionRequest, ActionResult, ActionFailure } from './types';
 
 /**
@@ -57,11 +58,15 @@ export class ActionDispatcher {
       if (v.verified) {
         this.emit('action.verified', req, { method: v.method });
         this.emit('action.completed', req, { evidence: exec.evidence?.summary });
-        return { actionId: req.actionId, requestId: req.requestId, status: 'COMPLETED', startedAt, completedAt, output: exec.output, evidence: exec.evidence, verification: v };
+        const result: ActionResult = { actionId: req.actionId, requestId: req.requestId, status: 'COMPLETED', startedAt, completedAt, output: exec.output, evidence: exec.evidence, verification: v };
+        void persistActionExecution(req, result); // best-effort durable record (degrades offline)
+        return result;
       }
       const failure: ActionFailure = exec.failure || { code: 'VERIFICATION_FAILED', stage: 'verify', message: v.reason || 'Verification failed — no evidence of success', retryable: false };
       this.emit('action.failed', req, { code: failure.code, stage: failure.stage });
-      return { actionId: req.actionId, requestId: req.requestId, status: 'FAILED', startedAt, completedAt, output: exec.output, evidence: exec.evidence, verification: v, failure };
+      const result: ActionResult = { actionId: req.actionId, requestId: req.requestId, status: 'FAILED', startedAt, completedAt, output: exec.output, evidence: exec.evidence, verification: v, failure };
+      void persistActionExecution(req, result); // best-effort durable record (degrades offline)
+      return result;
     });
   }
 

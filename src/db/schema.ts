@@ -306,3 +306,52 @@ export const interruptionDecisions = pgTable('interruption_decisions', {
   accepted: boolean('accepted'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+/* ─────────── ACTION FABRIC / DURABLE STATE ─────────── */
+// NOTE: never stores raw tokens/secrets — only a one-way hash where a reference is needed.
+export const deviceSessions = pgTable('device_sessions', {
+  id: varchar('id', { length: 64 }).primaryKey(),          // session jti
+  userId: varchar('user_id', { length: 128 }).notNull(),   // Google sub (identity key)
+  deviceId: varchar('device_id', { length: 128 }),
+  platform: varchar('platform', { length: 24 }),
+  tokenHash: varchar('token_hash', { length: 64 }),        // hash only, never the token
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  lastUsedAt: timestamp('last_used_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at'),
+  revokedAt: timestamp('revoked_at'),
+});
+
+export const actionExecutions = pgTable('action_executions', {
+  requestId: varchar('request_id', { length: 128 }).primaryKey(),
+  actionId: varchar('action_id', { length: 128 }).notNull(),
+  userId: varchar('user_id', { length: 128 }),
+  missionId: varchar('mission_id', { length: 128 }),
+  status: varchar('status', { length: 24 }).notNull(),
+  verified: boolean('verified').default(false).notNull(),
+  evidence: jsonb('evidence').default({}),
+  failure: jsonb('failure'),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+});
+
+export const jobs = pgTable('jobs', {
+  id: varchar('id', { length: 128 }).primaryKey(),
+  kind: varchar('kind', { length: 64 }).notNull(),
+  status: varchar('status', { length: 24 }).notNull(),
+  progress: integer('progress').default(0).notNull(),
+  payload: jsonb('payload').default({}),
+  result: jsonb('result'),
+  error: text('error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const actionEvents = pgTable('action_events', {
+  id: serial('id').primaryKey(),
+  type: varchar('type', { length: 48 }).notNull(),
+  requestId: varchar('request_id', { length: 128 }),
+  actionId: varchar('action_id', { length: 128 }),
+  missionId: varchar('mission_id', { length: 128 }),
+  payload: jsonb('payload').default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
