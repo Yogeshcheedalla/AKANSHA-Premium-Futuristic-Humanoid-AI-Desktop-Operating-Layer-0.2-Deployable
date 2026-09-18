@@ -11,6 +11,7 @@
 import React, { useEffect, useState } from 'react';
 import { Mic, MicOff, Loader2, Volume2, AlertTriangle } from 'lucide-react';
 import { audioEngine, type VoiceState } from './AudioEngine';
+import { handleVoiceKeydown, handleVoiceKeyup } from '@/core/voice/voiceShortcuts';
 
 const LABEL: Record<VoiceState, string> = {
   MUTED: 'Muted',
@@ -82,25 +83,51 @@ export function VoiceControl() {
     if (bridge && typeof bridge.reportVoiceState === 'function') { try { bridge.reportVoiceState(state); } catch { /* ignore */ } }
   }, [state]);
 
+  // Keyboard activation (the "Voice Enable" button was removed intentionally).
+  // Ctrl/Cmd+Space toggles; Ctrl/Cmd+Shift+Space is push-to-talk; Escape stops.
+  // Routed through the SAME session start/stop (single authority); auto-repeat is
+  // ignored in handleVoiceKeydown, so a held key cannot start duplicate listeners.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const actions = {
+      toggle: () => toggle(),
+      startPushToTalk: () => startSession(),
+      stopPushToTalk: () => stopSession(),
+      stop: () => stopSession(),
+    };
+    const onDown = (e: KeyboardEvent) => {
+      // Only intercept our specific chords; never swallow normal typing.
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') { e.preventDefault(); handleVoiceKeydown(e, actions); }
+      else if (e.key === 'Escape') handleVoiceKeydown(e, actions);
+    };
+    const onUp = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.code === 'Space') handleVoiceKeyup(e, actions); };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, state]);
+
   const Icon = state === 'ERROR' ? AlertTriangle : state === 'SPEAKING' ? Volume2 : active ? Mic : state === 'MUTED' ? MicOff : Mic;
   const busy = state === 'PROCESSING';
 
+  // Truthful, NON-clickable status indicator (voice is activated via keyboard now).
   return (
-    <button
-      onClick={toggle}
-      aria-pressed={active}
-      title={active ? 'Stop listening' : 'Start a persistent voice session'}
-      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs tracking-wide transition-colors ${
+    <div
+      role="status"
+      aria-live="polite"
+      title="Voice: Ctrl+Space toggle · Ctrl+Shift+Space push-to-talk · Esc stop"
+      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs tracking-wide ${
         state === 'ERROR'
           ? 'bg-rose-500/10 border-rose-400/30 text-rose-200'
           : active
           ? 'bg-emerald-500/10 border-emerald-400/30 text-emerald-200'
-          : 'bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border-cyan-400/20 text-cyan-300/90 hover:scale-[1.03]'
+          : 'bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border-cyan-400/20 text-cyan-300/90'
       }`}
     >
       <span className={`w-2 h-2 rounded-full ${DOT[state]}`} />
       {busy ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
       <span>{LABEL[state]}</span>
-    </button>
+      <span className="hidden lg:inline text-white/25 ml-1">Ctrl+Space</span>
+    </div>
   );
 }

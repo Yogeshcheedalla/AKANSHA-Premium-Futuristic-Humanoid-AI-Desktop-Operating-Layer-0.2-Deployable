@@ -8,6 +8,18 @@ Audit-first, evidence-based. Source HEAD `c39b524` (baseline `84ac62e`). **No pu
 > event → best-effort persistence), integration-tested. Durable DB persistence remains
 > **BLOCKED** until a Postgres + `DATABASE_URL` are provisioned (see `AKANSHA_PHASE3_PLAN.md`).
 
+> **Phase 4 delta (voice):** the clickable "Voice Enable" toggle in `VoiceControl` was
+> **removed intentionally** and replaced with a truthful, non-clickable voice status
+> indicator. Voice capability remains fully available through the existing single
+> `AudioEngine` authority + new **keyboard activation** (Ctrl/Cmd+Space toggle,
+> Ctrl/Cmd+Shift+Space push-to-talk, Escape stop — auto-repeat guarded) and the existing
+> tray IPC. Added a pure typed `voiceStateMachine` (IDLE/LISTENING/TRANSCRIBING/THINKING/
+> SPEAKING/WAITING_FOR_FOLLOWUP/INTERRUPTED/STOPPING/ERROR/PERMISSION_REQUIRED/UNAVAILABLE,
+> invalid transitions rejected) and an `OnceGuard` for exactly-once. Status:
+> **REAL_VERIFIED** for the state machine/shortcuts/exactly-once (unit-tested); live
+> microphone/ASR/TTS round-trip remains **BLOCKED** (needs a real mic + provider creds).
+> No second voice pipeline / TTS authority / orchestrator was introduced.
+
 ## 1. Executive summary
 Akansha is **not** a static mockup at the backend: **all 31 `/api/*` routes import real `src/core` singletons** (only `/api/health` is a status endpoint by design). The previously-fake sidebar panels (Memory/Agents/Missions/Security/Settings) were replaced this session with real singleton-backed endpoints + tests. The dominant gaps are **persistence** (in-memory; Postgres not connected) and **live external execution** (providers/MCP/models/voice/GPU) which are real code but **BLOCKED on credentials/hardware** — not fake. One genuine MOCK remains (`DevOpsWorkspace`, orphaned).
 
