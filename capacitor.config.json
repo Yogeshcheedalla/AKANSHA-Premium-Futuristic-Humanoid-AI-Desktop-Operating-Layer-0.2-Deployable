@@ -1,7 +1,7 @@
 {
   "appId": "ai.akansha.mobile",
   "appName": "Akansha",
-  "webDir": "public",
+  "webDir": "mobile-app",
   "bundledWebRuntime": false,
   "android": {
     "allowMixedContent": true,
@@ -12,8 +12,8 @@
     "contentInset": "always"
   },
   "server": {
-    "url": "http://localhost:3000",
-    "cleartext": true,
+    "url": "https://akansha-gamma.vercel.app",
+    "cleartext": false,
     "androidScheme": "https"
   },
   "plugins": {

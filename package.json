@@ -33,6 +33,9 @@
     "dist:ios": "npx cap add ios && npx cap sync ios && cd ios && pod install && xcodebuild -scheme App -sdk iphoneos"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "clsx": "^2.1.1",
     "dotenv": "17.3.1",
