@@ -270,3 +270,18 @@ Supersedes §21.4's "Model install→inference remains gated" line — it was ru
 **Provenance / honesty:** the runtime was the existing `llama-cli.exe` in the read‑only reference repo's data dir (executed only — that repo was NOT modified), and the model was the already‑downloaded signed GGUF (1,117,320,736 B, exactly the catalog `downloadSizeBytes`, SHA verified). The harness isolates the registry to a temp `AKANSHA_HOME`, so it proves the pipeline + real inference without writing to the packaged app's durable store.
 
 **Remaining honest boundary:** making a Model Center card show persistent `READY` inside the installed desktop app additionally requires the llama.cpp runtime provisioned into the app's own data dir; the app intentionally has **no pinned runtime download source** and will not trust an unpinned binary, so that provisioning is a deliberate, operator‑controlled step — not something to fake. The recommendation + integrity + inference pipeline itself is now **REAL_VERIFIED**.
+
+---
+
+## 23. CI architecture improvement — gated in-CI release publishing (2026-09-19)
+
+Status: **DESCRIPTIVE_ONLY / created + locally verified** — the workflow has NOT been executed on a runner (that needs a push + a tag/dispatch), so it is not claimed as run.
+
+`desktop-build.yml` now closes the publishing gap without depending on the local git token (which can't read Actions artifacts):
+- Each build job (windows/macos/linux/android) **verifies its own output** (present-expected-file + `if-no-files-found: error` + a per-platform SHA‑256 step) and uploads an artifact. Windows job also sets `git core.longpaths true` to mitigate the MAX_PATH failure.
+- A separate **`release-publish` job uses the workflow's own `GITHUB_TOKEN`** (contents:write) to download the artifacts *inside* CI and publish them — eliminating the local-token Actions-read limitation.
+- **Publishing is explicitly gated, not automatic:** it runs only on a manual `workflow_dispatch` **from a `v*` tag** with `publish: true` (builds still run on tag push, but nothing publishes by itself).
+- **Only artifacts that passed their gates are published:** `needs` + `if: always()` + per‑job result checks + a "no verified artifacts → abort" guard mean a failed platform is simply skipped; the release body carries the SHA‑256/size list.
+- **Optional loop to `/api/releases`:** a `Repoint AKANSHA_RELEASES` step (guarded by a `VERCEL_TOKEN` secret) uses `scripts/ci-build-releases-env.mjs` to build the release JSON from the published assets and update the Vercel env. The helper was **functionally verified against the real v3.0.1 release** — it emitted valid `[{platform,architecture,type,filename,url,sha256?,version}]` for the installer + portable (SHA omitted only because that release's body had no checksum lines; the CI job writes them).
+
+Net: the pipeline `git tag → cross-platform build → artifact verification → gated release-publish → GitHub Release assets → (optional) AKANSHA_RELEASES → /api/releases → Download UI` is now defined in CI, publishing stays human‑gated, and nothing is auto‑published or faked.

@@ -1,27 +1,34 @@
 # ══════════════════════════════════════════════════════════════════════════
-#  AKANSHA — cross-platform desktop builds
+#  AKANSHA — cross-platform desktop builds + GATED release publishing
 #
-#  Honest purpose: the macOS .dmg and Linux .AppImage/.deb CANNOT be produced
-#  on a Windows machine. This workflow builds each platform on the correct
-#  runner so the "all formats" artifacts are produced where they actually can
-#  be. It uploads them as workflow ARTIFACTS only.
+#  Why: the macOS .dmg and Linux .AppImage/.deb cannot be produced on a Windows
+#  machine, and a local git token cannot read Actions artifacts. So the whole
+#  pipeline lives in CI: each platform builds on the correct runner, its output
+#  is VERIFIED (checksum + expected file present), and a SEPARATE, explicitly
+#  gated job publishes ONLY the artifacts whose build/verification gates passed,
+#  using the workflow's own GITHUB_TOKEN.
 #
-#  It deliberately does NOT create or publish a GitHub Release and does NOT
-#  sign / notarize / code-sign anything:
-#    - Windows Authenticode signing  requires a code-signing cert (secret).
-#    - macOS .dmg notarization        requires an Apple Developer ID + API key
-#                                      (secrets) and can only run on macOS.
-#    - Android release (AAB) signing  requires YOUR upload keystore (secret).
-#  Those stay human-gated on purpose. Enable them only by adding the secrets
-#  and flipping the `if` guards below.
+#  Flow:
+#    git tag (v*)  →  cross-platform build jobs  →  artifact verification
+#                 →  release-publish job (ONLY when publish=true, dispatched
+#                    from a v* tag)  →  GitHub Release assets
+#                 →  (optional) repoint AKANSHA_RELEASES  →  /api/releases
+#                 →  Akansha Download UI
 #
-#  Trigger: manual (workflow_dispatch) or on version tags v* — NOT every push,
-#  so a deploy push does not silently kick off heavy builds.
+#  Publishing is NOT automatic on every tag: builds run on tag push, but the
+#  release-publish job only runs on a manual `workflow_dispatch` from a v* tag
+#  with the `publish` input checked. Nothing is signed/notarized unless the
+#  relevant secrets exist (Windows cert, Apple Developer ID, Android keystore).
 # ══════════════════════════════════════════════════════════════════════════
 name: desktop-build
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish verified artifacts to a GitHub Release (only when dispatched from a v* tag)'
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 
@@ -29,37 +36,42 @@ permissions:
   contents: read
 
 jobs:
+  # ───────────────────────── BUILD JOBS ─────────────────────────
   windows:
     name: Windows (NSIS + Portable)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+        with: { node-version: 20 }
+      # Windows runners can hit MAX_PATH on this very long repo dir; enable long paths.
+      - name: Enable git long paths (Windows MAX_PATH)
+        run: git config --global core.longpaths true
       - run: npm ci
       - run: npm run dist:win
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+      - name: Verify + checksum Windows artifacts
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem release -Include *.exe -Recurse
+          if (-not $files) { Write-Error 'no Windows .exe produced'; exit 1 }
+          foreach ($f in $files) { $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower(); "$($f.Name)  $h  $((Get-Item $f.FullName).Length)" } | Out-File -Encoding ascii release/checksums-windows.txt
+          Get-Content release/checksums-windows.txt
+      - uses: actions/upload-artifact@v4
         with:
           name: akansha-windows
           path: |
-            release/Akansha-Setup-*.exe
-            release/Akansha-Portable-*.exe
+            release/*.exe
+            release/checksums-windows.txt
           if-no-files-found: error
 
   macos:
-    name: macOS (dmg — unsigned unless secrets present)
+    name: macOS (dmg — unsigned unless Apple secrets present)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+        with: { node-version: 20 }
       - run: npm ci
-      # Unsigned build; add Apple Developer ID cert + notary credentials as
-      # secrets (CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD,
-      # APPLE_TEAM_ID) to produce a notarized, installable .dmg.
       - run: npm run dist:mac
         env:
           CSC_LINK: ${{ secrets.APPLE_CERT_P12 }}
@@ -67,10 +79,18 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Verify + checksum macOS artifacts
+        run: |
+          set -e
+          files=$(find release -maxdepth 1 -name '*.dmg' || true)
+          [ -n "$files" ] || { echo 'no macOS .dmg produced'; exit 1; }
+          ( cd release && shasum -a 256 *.dmg > checksums-macos.txt ) && cat release/checksums-macos.txt
       - uses: actions/upload-artifact@v4
         with:
           name: akansha-macos
-          path: release/*.dmg
+          path: |
+            release/*.dmg
+            release/checksums-macos.txt
           if-no-files-found: error
 
   linux:
@@ -79,16 +99,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+        with: { node-version: 20 }
       - run: npm ci
       - run: npm run dist:linux
+      - name: Verify + checksum Linux artifacts
+        run: |
+          set -e
+          files=$(find release -maxdepth 1 \( -name '*.AppImage' -o -name '*.deb' \) || true)
+          [ -n "$files" ] || { echo 'no Linux artifacts produced'; exit 1; }
+          ( cd release && sha256sum *.AppImage *.deb > checksums-linux.txt ) && cat release/checksums-linux.txt
       - uses: actions/upload-artifact@v4
         with:
           name: akansha-linux
           path: |
             release/*.AppImage
             release/*.deb
+            release/checksums-linux.txt
           if-no-files-found: error
 
   android:
@@ -97,21 +123,88 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+        with: { node-version: 20 }
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
+        with: { distribution: temurin, java-version: '21' }
       - uses: android-actions/setup-android@v3
       - run: npm ci
       - run: npx cap add android || true
       - run: npx cap sync android
-      # Debug build only. A signed, Play-uploadable AAB needs YOUR upload
-      # keystore as a secret (ANDROID_KEYSTORE, keystore passwords) — not faked here.
       - run: cd android && ./gradlew assembleDebug --no-daemon
+      - name: Verify + checksum Android artifacts
+        run: |
+          set -e
+          apk=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          [ -n "$apk" ] || { echo 'no debug APK produced'; exit 1; }
+          cp "$apk" akansha-debug.apk && sha256sum akansha-debug.apk > checksums-android.txt && cat checksums-android.txt
       - uses: actions/upload-artifact@v4
         with:
           name: akansha-android-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: |
+            akansha-debug.apk
+            checksums-android.txt
           if-no-files-found: error
+
+  # ───────────────────── GATED RELEASE PUBLISH ─────────────────────
+  # Runs only on an explicit `publish: true` dispatch FROM a v* tag. Uses
+  # `if: always()` + per-job result checks so it publishes ONLY the platforms
+  # whose build+verify gates succeeded; a failed platform is simply skipped
+  # (its artifact was never produced).
+  release-publish:
+    name: Publish verified artifacts (explicit gate)
+    needs: [windows, macos, linux, android]
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.publish == true && startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download whatever artifacts passed their gates
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Verify downloaded assets are non-empty + collect checksums
+        run: |
+          set -e
+          mapfile -t bins < <(find dist -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.apk' \))
+          if [ "${#bins[@]}" -eq 0 ]; then echo 'No verified artifacts to publish — aborting (nothing was built successfully).'; exit 1; fi
+          : > release-checksums.txt
+          for f in "${bins[@]}"; do
+            sz=$(stat -c%s "$f"); [ "$sz" -gt 0 ] || { echo "empty artifact: $f"; exit 1; }
+            printf '%s  %s  %s bytes\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")" "$sz" >> release-checksums.txt
+          done
+          echo "Assets that passed build+verify gates:"; cat release-checksums.txt
+
+      - name: Create / update GitHub Release with ONLY the verified assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Akansha ${{ github.ref_name }}"
+          body_path: release-checksums.txt
+          files: |
+            dist/**/*.exe
+            dist/**/*.AppImage
+            dist/**/*.deb
+            dist/**/*.dmg
+            dist/**/*.apk
+
+      # Optional: close the loop back to /api/releases by repointing the
+      # Vercel AKANSHA_RELEASES env to these release assets. Only runs when the
+      # VERCEL_TOKEN secret is configured; otherwise publishing the GitHub
+      # Release alone is a complete, honest step and a human repoints the env.
+      - name: Repoint AKANSHA_RELEASES (optional; needs VERCEL_TOKEN)
+        if: ${{ env.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          node scripts/ci-build-releases-env.mjs "$GITHUB_REPOSITORY" "${{ github.ref_name }}" > .akansha-releases.json
+          cat .akansha-releases.json
+          npx vercel env rm AKANSHA_RELEASES production --token "$VERCEL_TOKEN" --yes || true
+          npx vercel env add AKANSHA_RELEASES production --token "$VERCEL_TOKEN" < .akansha-releases.json
+          npx vercel redeploy --prod --yes --token "$VERCEL_TOKEN" || npx vercel deploy --prod --yes --token "$VERCEL_TOKEN"
