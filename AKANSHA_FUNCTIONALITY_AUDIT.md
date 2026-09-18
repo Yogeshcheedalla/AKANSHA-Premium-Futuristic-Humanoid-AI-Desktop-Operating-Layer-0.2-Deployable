@@ -251,3 +251,22 @@ BLOCKED on toolchain/secrets. Model install→inference remains gated on a real 
 
 ### 21.5 Gates (this session)
 `npm test` **328/328** · `tsc --noEmit` clean · `next build` OK · `eslint` **0 errors** · `git diff --check` clean. Committed and pushed (`main` in sync with `origin/main`).
+
+---
+
+## 22. Phase 8 — Model Center install→inference executed for REAL (2026-09-19)
+
+Supersedes §21.4's "Model install→inference remains gated" line — it was run end‑to‑end for real.
+
+`scripts/live-inference-bench.ts` (the evidence harness, not a unit test) was executed against a **real llama.cpp runtime** and the **already‑present signed Qwen2.5‑1.5B GGUF**, driving the actual production pipeline:
+`signed catalog → Ed25519 verify → toManifestEntry → verifyArtifact (SHA‑256 + GGUF container) → provisionAndVerify (REAL llama‑cli inference self‑test) → providerManager.load → MasterOrchestrator.createMission/runMission → ModelRouter(LOCAL_ONLY) → LocalGgufProvider → llama.cpp → generated tokens`.
+
+**Measured result (honest — only values llama.cpp actually printed):**
+- 3 runs, each `missionStatus:COMPLETED`, `providerUsed:local-llama`, `modelUsed:qwen2.5-1.5b-instruct-q4_k_m`, `verified:true`, real output ("An operating system manages computer hardware and software resources…").
+- Generation **~23.2 tok/s** (min 20.9 / max 24.7 / median 23.9); prompt 74–81 t/s; wall 4.32–4.76 s; cold 4762 ms, warm avg 4386 ms.
+- Token counts reported `NOT AVAILABLE` (single‑turn llama.cpp doesn't print them) — throughput was **not** derived/estimated from them.
+- `offlineNoCloudInChain:true`, `offlineFinalState:LOCAL_INFERENCE_SUCCESS`; acceptance gates **A pipeline / B signedModelIntegrity / C measuredBenchmark / D offline = all true**; `ok:true`.
+
+**Provenance / honesty:** the runtime was the existing `llama-cli.exe` in the read‑only reference repo's data dir (executed only — that repo was NOT modified), and the model was the already‑downloaded signed GGUF (1,117,320,736 B, exactly the catalog `downloadSizeBytes`, SHA verified). The harness isolates the registry to a temp `AKANSHA_HOME`, so it proves the pipeline + real inference without writing to the packaged app's durable store.
+
+**Remaining honest boundary:** making a Model Center card show persistent `READY` inside the installed desktop app additionally requires the llama.cpp runtime provisioned into the app's own data dir; the app intentionally has **no pinned runtime download source** and will not trust an unpinned binary, so that provisioning is a deliberate, operator‑controlled step — not something to fake. The recommendation + integrity + inference pipeline itself is now **REAL_VERIFIED**.
