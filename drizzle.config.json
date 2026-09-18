@@ -3,6 +3,6 @@
   "schema": "./src/db/schema.ts",
   "out": "./src/db/migrations",
   "dbCredentials": {
-    "url": "postgresql://postgres:postgres@127.0.0.1:5432/akansha"
+    "url": "postgresql://postgres:postgres@127.0.0.1:5433/akansha"
   }
 }

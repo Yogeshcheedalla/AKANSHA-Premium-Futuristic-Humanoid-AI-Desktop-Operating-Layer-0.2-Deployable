@@ -62,7 +62,7 @@ export const ProvidersWorkspace = () => {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const testProvider = async (providerId: string) => {
     setTesting(providerId);

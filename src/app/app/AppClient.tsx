@@ -37,7 +37,9 @@ export default function AppClient() {
   const [onboard, setOnboard] = useState(false);
 
   useEffect(() => {
-    try { if (!localStorage.getItem(ONBOARD_FLAG)) setOnboard(true); } catch { /* SSR/no-storage: skip */ }
+    void Promise.resolve().then(() => {
+      try { if (!localStorage.getItem(ONBOARD_FLAG)) setOnboard(true); } catch { /* SSR/no-storage: skip */ }
+    });
   }, []);
 
   const renderWorkspace = () => {

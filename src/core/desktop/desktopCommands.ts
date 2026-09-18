@@ -1,0 +1,49 @@
+import { resolveApp } from '@/core/execution/appRegistry';
+import { isSafeAppName } from './desktopCapabilities';
+
+/**
+ * Deterministic command → Action Fabric mapping.
+ *
+ * This is NOT a new command authority — it is the single place that recognises a
+ * simple, allowlisted Windows "open/close <app>" instruction and resolves it to a
+ * concrete registered action + structured payload. Anything ambiguous, multi-step,
+ * shell-like, or referencing an unknown app returns null so the caller falls back to
+ * the existing orchestrator/planner path. Unknown text NEVER becomes shell execution.
+ */
+export interface DesktopActionMap {
+  actionId: 'desktop.app.launch' | 'desktop.app.close';
+  application: string;
+}
+
+const LAUNCH = /^\s*(?:please\s+|can you\s+)?(?:open|launch|start|run|bring up|fire up)\s+(.+?)\s*[.!?,]*$/i;
+const CLOSE = /^\s*(?:please\s+|can you\s+)?(?:close|quit|exit|kill|terminate|stop|shut)\s+(.+?)\s*[.!?,]*$/i;
+
+/** Rejects anything that is not a single, plain application target. */
+const NOT_A_PLAIN_APP = /[;&|<>`$]|\band\b|\bthen\b|,/i;
+
+export function mapToDesktopAction(text: string): DesktopActionMap | null {
+  const t = (text || '').trim();
+  if (!t) return null;
+
+  let kind: 'launch' | 'close' | null = null;
+  let rest = '';
+  let m: RegExpMatchArray | null;
+
+  if ((m = t.match(LAUNCH))) { kind = 'launch'; rest = m[1]; }
+  else if ((m = t.match(CLOSE))) { kind = 'close'; rest = m[1]; }
+  else return null;
+
+  rest = rest.replace(/\s+/g, ' ').trim();
+  // Words like "a new file", "google.com" etc. are not allowlisted apps → fall through.
+  if (!rest || NOT_A_PLAIN_APP.test(rest) || rest.length > 64) return null;
+  if (!isSafeAppName(rest)) return null;
+
+  const spec = resolveApp(rest);
+  if (!spec) return null; // unknown → never invent, let the orchestrator handle it
+
+  return {
+    actionId: kind === 'launch' ? 'desktop.app.launch' : 'desktop.app.close',
+    // Canonical alias so "text editor" → "notepad" deterministically.
+    application: spec.aliases[0],
+  };
+}

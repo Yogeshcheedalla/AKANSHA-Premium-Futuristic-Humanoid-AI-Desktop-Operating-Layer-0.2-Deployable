@@ -46,7 +46,7 @@ export const ScorecardWorkspace = () => {
     } finally { clearTimeout(timer); setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void Promise.resolve().then(load); }, []);
 
   const run = async () => { setBusy(true); await load(); setBusy(false); };
 

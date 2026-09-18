@@ -106,3 +106,30 @@ FOUNDATION (Action Fabric + truthful status engine) → PROVIDERS (credentials +
 
 ## 17. Acceptance
 Every major section audited; API/IPC inventories complete; one MOCK identified; real-vs-blocked-vs-fake separated; persistence gap documented; **no second orchestrator/router/memory/voice introduced**; nothing pushed/deployed. Tests/build/typecheck/lint run (see below).
+
+---
+
+## 18. Phase 6 delta — desktop close, command→fabric wiring, durable Postgres (2026-09-19)
+
+### 18.1 Second desktop capability: `desktop.app.close` — **REAL_VERIFIED**
+`src/core/desktop/desktopCapabilities.ts` registers `desktop.app.close` alongside `desktop.app.launch` on the ONE `ActionRegistry`. Execution reuses `resolveApp` (allowlist) + a new real `close` op in `WindowsComputerUseProvider` (PowerShell `Stop-Process` by resolved `processName`, then **polls `Get-Process` until the process is actually gone**). Success requires OBSERVED termination:
+- nothing running → `APP_NOT_FOUND` (cannot claim we closed nothing);
+- terminate attempted but process survived → `VERIFICATION_FAILED`;
+- only a genuinely-absent process → `COMPLETED` (`method: processTerminated`).
+No shell interpolation; same `isSafeAppName` guard rejects `notepad; powershell` / `&&` / `|`. Permission: `close` added to `PermissionEngine` map as `WINDOWS_CONTROL`, NOT auto-ok → requires confirmation.
+Evidence: `desktopAppClose.test.ts` (8 tests). Real Windows e2e: `"close notepad"` → COMPLETED, `killedPid 21712`, and `Get-Process notepad` count 0 confirmed independently.
+
+### 18.2 Command/orchestrator → Action Fabric — **REAL_VERIFIED (single path, no 2nd orchestrator)**
+`MasterOrchestrator` still owns the flow. For a `command` intent it now calls `mapToDesktopAction` (`src/core/desktop/desktopCommands.ts`) — a deterministic, allowlist-resolving mapper ("open/launch/start X", "close/quit/terminate X" → `desktop.app.launch`/`close` with a canonical `application`). Anything ambiguous / multi-step / shell-like / unknown-app returns `null` and falls through to the existing planner/engine path (unknown text NEVER becomes shell execution). A matched command is executed **only** via `actionDispatcher.dispatch` (RiskEngine gate → real action → observation → verification → event → best-effort persist); the outcome is mapped truthfully back onto the mission (`fabricOutcomeToMission`, COMPLETED only on verified evidence). The desktop capabilities self-register on the singleton registry via an import side-effect in `desktopCapabilities.ts`.
+Evidence: `masterOrchestratorDesktop.test.ts` (routes `"open notepad"`/`"close paint"` through the fabric, proves a fabric verification failure NEVER becomes mission success); `desktopCommands.test.ts` (5 tests incl. shell-injection/multi-step rejection). Full e2e through the fabric verified on real Windows above.
+
+### 18.3 Durable PostgreSQL/Supabase provisioning phase — tooling **REAL_VERIFIED locally**; **production BLOCKED**
+- `src/db/migrations/0001_security_and_vector.sql` (idempotent): pgvector extension + `embedding vector(1536)` + HNSW cosine indexes on memory tables; per-user **ROW LEVEL SECURITY** (`ENABLE`+`FORCE`, `USING`/`WITH CHECK` on `current_setting('akansha.user_id', true)`) for `memory_entries`, `action_executions`, `missions`, `device_sessions`. Credentials/secrets are never stored (only hashes/refs — unchanged).
+- `scripts/db-provision.ts` (`npm run db:provision`) + `docker-compose.yml` now on `pgvector/pgvector:pg16`, published on **5433** (host 5432 was a different native Postgres). Offline behaviour preserved: with no `DATABASE_URL`, `src/db/index.ts` stays a throwing proxy and the harness reports **BLOCKED**, never fake success.
+- Ran for real against the local Postgres — `scripts/db-provision.ts`: **9/9 PASS** — connection, drizzle migrations (5 core tables), security/RLS applied, pgvector 0.8.6 + embedding column present, least-privilege `akansha_app` role, write + read-back, **RLS read isolation** (user A cannot read user B row), **RLS write isolation** (user A cannot forge a user B row), and **backup/restore** (pg_dump → fresh db → restore, `action_executions` present). This proves the durable path works end-to-end.
+
+### 18.4 Gates (this session)
+`npm test` **312/312** · `tsc --noEmit` clean · `next build` OK · `eslint` **0 errors** (2 pre-existing non-fatal warnings; added `android/`,`ios/` to ESLint ignores so lint no longer scans generated native assets; fixed pre-existing `set-state-in-effect`/`no-unescaped-entities` in 5 UI files) · `git diff --check` clean.
+
+### 18.5 Production status — **BLOCKED (not faked)**
+Desktop + fabric changes and the durable-DB migration/harness are **local commits only**. Production cannot contain them until pushed, and pushing is gated on explicit human approval. Production persistence additionally needs a **provisioned managed Postgres + a non-superuser app role + `DATABASE_URL` set server-side** (RLS is only meaningful when the app connects as the least-privilege role, never as a superuser) — none of which exists in Vercel yet. Therefore **production health / production API verification = BLOCKED**, and no deployment was performed.

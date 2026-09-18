@@ -20,6 +20,7 @@ export interface PermissionDecision {
 
 const PERMISSION_FOR_ACTION: Record<ComputerAction['kind'], string[]> = {
   launch: ['WINDOWS_CONTROL'],
+  close: ['WINDOWS_CONTROL'],
   focus: ['WINDOWS_CONTROL'],
   observe: ['WINDOWS_CONTROL'],
   type: ['WINDOWS_CONTROL', 'KEYBOARD_INPUT'],

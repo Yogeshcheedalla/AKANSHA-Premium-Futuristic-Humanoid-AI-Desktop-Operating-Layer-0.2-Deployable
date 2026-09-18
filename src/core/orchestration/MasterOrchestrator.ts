@@ -9,6 +9,9 @@ import { executionPlanner } from '../execution/ExecutionPlanner';
 import { executionEngine } from '../execution/ExecutionEngine';
 import { permissionEngine } from '../execution/PermissionEngine';
 import { webCapability } from '../web/WebCapability';
+import { actionDispatcher } from '../actions/ActionDispatcher';
+import { mapToDesktopAction } from '../desktop/desktopCommands';
+import '../desktop/desktopCapabilities'; // side effect: registers desktop.app.launch/close on the fabric
 
 export interface MissionState {
   id: string;
@@ -196,6 +199,35 @@ export class MasterOrchestrator {
     return intent === 'question' || intent === 'information_request' || intent === 'research' || intent === 'coding' || intent === 'unknown';
   }
 
+  /**
+   * Reflect a verified Action Fabric outcome onto the mission truthfully.
+   * COMPLETED is only reported when the fabric actually observed + verified real
+   * evidence (a real process appeared or disappeared). No evidence → no success.
+   */
+  private fabricOutcomeToMission(mission: MissionState, res: { actionId?: string; status: string; evidence?: { summary?: string }; verification?: { verified?: boolean; reason?: string }; failure?: { code?: string; message?: string }; output?: unknown }) {
+    const evidenceSummary = res.evidence?.summary || '';
+    if (res.status === 'COMPLETED' && res.verification?.verified) {
+      mission.status = 'COMPLETED';
+      mission.context.evidence = [res.evidence];
+      mission.context.reply = `Done, Boss — ${evidenceSummary}. I observed and verified the real ${res.actionId || 'desktop'} effect rather than assuming it.`;
+      mission.observations.push(evidenceSummary || 'verified');
+      this.emit({ type: 'MISSION_COMPLETED', missionId: mission.id, payload: { verified: true, actionId: res.actionId } });
+      return;
+    }
+    if (res.status === 'AUTH_REQUIRED') {
+      mission.status = 'NEEDS_CONFIRMATION';
+      mission.context.reply = 'That desktop action needs your confirmation first.';
+      this.emit({ type: 'MISSION_AWAITING_CONFIRMATION', missionId: mission.id, payload: { actionId: res.actionId } });
+      return;
+    }
+    mission.status = 'FAILED';
+    mission.context.failureClass = res.failure?.code || 'VERIFICATION_FAILED';
+    mission.context.evidence = res.evidence ? [res.evidence] : [];
+    mission.context.reply =
+      `I attempted "${mission.goal}" but could not verify it succeeded: ${res.failure?.message || res.verification?.reason || 'no observed evidence'}`;
+    this.emit({ type: 'MISSION_FAILED', missionId: mission.id, payload: { error: mission.context.failureClass } });
+  }
+
   async runMission(missionId: string): Promise<MissionState> {
     const mission = this.activeMissions.get(missionId);
     if (!mission) throw new Error(`Mission ${missionId} not found`);
@@ -212,9 +244,34 @@ export class MasterOrchestrator {
     this.emit({ type: 'MISSION_PLANNED', missionId, payload: { capabilities: mission.context.planCap } });
 
     // ── ACTION INTENTS: risk gate + honest capability reporting ───────
-    // There is NO OS / browser / MCP execution backend wired into this build,
-    // so Akansha must NEVER claim an action completed. NO EVIDENCE = NO SUCCESS.
+    // Simple allowlisted desktop commands are executed for real through the
+    // Action Fabric above. More complex goals fall through to the planner/engine
+    // path; if no backend can satisfy them, Akansha must NEVER claim completion.
+    // NO EVIDENCE = NO SUCCESS.
     if (this.isActionIntent(intent)) {
+      // ── SINGLE ALLOWLISTED DESKTOP COMMAND → Action Fabric ────────────
+      // "open notepad" / "close paint" are executed through the ONE execution
+      // substrate (RiskEngine gate → real Windows action → observation →
+      // verification → event → best-effort persistence). Multi-step goals are
+      // NOT matched here and fall through to the planner/engine path below.
+      if (intent === 'command') {
+        const mapped = mapToDesktopAction(mission.goal);
+        if (mapped) {
+          this.emit({ type: 'MISSION_DESKTOP_DISPATCH', missionId, payload: { actionId: mapped.actionId, application: mapped.application } });
+          const res = await actionDispatcher.dispatch({
+            actionId: mapped.actionId,
+            requestId: mission.context.requestId || missionId,
+            missionId,
+            userId: mission.context.userId,
+            confirmed: true, // a direct user command is the authorization surface
+            payload: { application: mapped.application },
+          });
+          this.fabricOutcomeToMission(mission, res);
+          mission.updatedAt = Date.now();
+          return mission;
+        }
+      }
+
       const risk = riskEngine.assess(mission.goal, { confidence: 0.8 });
       const escalation = escalationDecision({ confidence: 0.8, risk });
       mission.context.risk = risk;

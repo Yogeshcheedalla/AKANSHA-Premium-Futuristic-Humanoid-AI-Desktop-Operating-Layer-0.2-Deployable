@@ -72,7 +72,7 @@ export const CognitiveWorkspace = () => {
 
   useEffect(() => {
     mounted.current = true;
-    load();
+    void Promise.resolve().then(load);
     const iv = setInterval(load, 6000);
     return () => { mounted.current = false; clearInterval(iv); };
   }, [load]);
@@ -383,7 +383,7 @@ export const CognitiveWorkspace = () => {
             <GlassSurface className="p-6 rounded-3xl">
               <div className="flex items-center gap-2 mb-4"><AlertTriangle size={14} className="text-amber-300/70" /><h3 className="text-white/80 font-medium text-sm">Low-confidence memories</h3></div>
               {data.memory.selfReport.hedged.map((h, i) => (
-                <p key={i} className="text-[11px] text-white/40 leading-relaxed">"{h}"</p>
+                <p key={i} className="text-[11px] text-white/40 leading-relaxed">&ldquo;{h}&rdquo;</p>
               ))}
               <p className="text-[10px] text-white/25 mt-3">Akansha hedges these rather than stating them as fact.</p>
             </GlassSurface>

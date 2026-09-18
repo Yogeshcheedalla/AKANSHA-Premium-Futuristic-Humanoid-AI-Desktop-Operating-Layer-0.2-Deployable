@@ -40,6 +40,7 @@ export type RiskTier = 'low' | 'medium' | 'high' | 'critical';
 /** A single atomic operation the provider can perform. */
 export type ComputerAction =
   | { kind: 'launch'; app: string }
+  | { kind: 'close'; app: string }
   | { kind: 'focus'; target: string }
   | { kind: 'observe'; target?: string }
   | { kind: 'type'; text: string; target?: string }
@@ -48,6 +49,16 @@ export type ComputerAction =
   | { kind: 'scroll'; direction: 'up' | 'down'; amount?: number; target?: string }
   | { kind: 'screenshot' }
   | { kind: 'listWindows' };
+
+/** Result of attempting to terminate an allowlisted application process. */
+export interface ProcessCloseResult {
+  /** A running process was found and a termination was attempted. */
+  wasRunning: boolean;
+  /** OBSERVED to have terminated (no matching process remained) — success evidence. */
+  closed: boolean;
+  killedPid?: number;
+  remainingPids: number[];
+}
 
 export interface WindowObservation {
   found: boolean;
@@ -113,6 +124,7 @@ export interface ComputerUseProvider {
   /** Cheap capability probe — is this provider actually usable right now? */
   isAvailable(): Promise<boolean>;
   launch(app: string): Promise<WindowObservation>;
+  close(app: string): Promise<ProcessCloseResult>;
   focus(target: string): Promise<WindowObservation>;
   observe(target?: string): Promise<WindowObservation>;
   type(text: string, target?: string): Promise<WindowObservation>;

@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { resolveApp, expandEnv } from './appRegistry';
-import type { ComputerUseProvider, WindowObservation } from './types';
+import type { ComputerUseProvider, WindowObservation, ProcessCloseResult } from './types';
 
 const execFileAsync = promisify(execFile);
 
@@ -102,6 +102,27 @@ try {
       if ($w) { $found = $w; $title = $w.Current.Name; try { $realPid = $w.Current.ProcessId } catch {}; break }
     }
     Out @{ ok=[bool]$found; found=[bool]$found; pid=$realPid; title=$title }
+    return
+  }
+
+  if ($action -eq 'close') {
+    $procName = $req.processName
+    if (-not $procName) { Out @{ ok=$false; closed=$false; error='no process name' }; return }
+    $before = @(Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+    if ($before.Count -eq 0) {
+      # Nothing was running — cannot claim we closed something.
+      Out @{ ok=$false; closed=$false; wasRunning=$false; remaining=@() }
+      return
+    }
+    Stop-Process -Id $before -Force -ErrorAction SilentlyContinue
+    $remaining = @()
+    for ($i = 0; $i -lt [int]$req.pollIterations; $i++) {
+      Start-Sleep -Milliseconds ([int]$req.pollIntervalMs)
+      $p = @(Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+      if ($p.Count -eq 0) { $remaining = @(); break } else { $remaining = $p }
+    }
+    $gone = ($remaining.Count -eq 0)
+    Out @{ ok=$gone; closed=$gone; wasRunning=$true; killedPid=$before[0]; remaining=$remaining }
     return
   }
 
@@ -208,6 +229,11 @@ interface PsResult {
   text?: string;
   windows?: string[];
   error?: string;
+  // 'close' observation fields
+  closed?: boolean;
+  wasRunning?: boolean;
+  killedPid?: number;
+  remaining?: number[];
 }
 
 export class WindowsComputerUseProvider implements ComputerUseProvider {
@@ -273,6 +299,27 @@ export class WindowsComputerUseProvider implements ComputerUseProvider {
       pollIntervalMs: 400,
     });
     return { found: !!r.found, pid: r.pid ?? undefined, title: r.title ?? undefined };
+  }
+
+  /** Terminate a running allowlisted application by process name and OBSERVE that it is gone. */
+  async close(app: string): Promise<ProcessCloseResult> {
+    const spec = this.spec(app);
+    if (!spec || !spec.processName) {
+      return { wasRunning: false, closed: false, remainingPids: [] };
+    }
+    const r = await this.run({
+      action: 'close',
+      processName: spec.processName,
+      titleHint: spec.titleHint,
+      pollIterations: 12,
+      pollIntervalMs: 350,
+    });
+    return {
+      wasRunning: !!r.wasRunning,
+      closed: !!r.closed,
+      killedPid: r.killedPid ?? undefined,
+      remainingPids: Array.isArray(r.remaining) ? r.remaining : [],
+    };
   }
 
   async focus(target: string): Promise<WindowObservation> {

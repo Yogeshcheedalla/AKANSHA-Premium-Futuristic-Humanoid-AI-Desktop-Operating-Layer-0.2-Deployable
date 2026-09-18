@@ -6,7 +6,8 @@ export const OrganicWaveform = ({ isActive = false, state = 'idle' }: { isActive
 
   useEffect(() => {
     if (!isActive) {
-      setBars(Array.from({ length: 40 }, () => 20));
+      const flat = Array.from({ length: 40 }, () => 20);
+      void Promise.resolve().then(() => setBars(flat));
       return;
     }
     

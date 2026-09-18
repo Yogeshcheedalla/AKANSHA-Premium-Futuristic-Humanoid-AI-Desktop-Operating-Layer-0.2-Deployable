@@ -2,6 +2,7 @@ import { actionRegistry, type ActionRegistry } from '@/core/actions/ActionRegist
 import type { ActionRequest, Evidence, FailureCode } from '@/core/actions/types';
 import { resolveApp, expandEnv, type AppSpec } from '@/core/execution/appRegistry';
 import { windowsComputerUseProvider } from '@/core/execution/WindowsComputerUseProvider';
+import type { ProcessCloseResult } from '@/core/execution/types';
 
 /** Shell metacharacters are NEVER allowed in an application name — resolution is by
  *  allowlist alias to a fixed exe, never by interpolating user text into a shell. */
@@ -16,32 +17,37 @@ export function desktopControlStatus(platform: string = process.platform): 'READ
 }
 
 interface Launcher { launch(app: string): Promise<{ found: boolean; pid?: number; title?: string }>; }
+interface Closer { close(app: string): Promise<ProcessCloseResult>; }
 
 /**
- * Register the FIRST real Windows desktop capability `desktop.app.launch` through the
- * existing Action Fabric. It reuses the real resolver + Win32 provider; success requires
- * OBSERVED evidence (a real window/process), never "spawn returned".
+ * Register the real Windows desktop capabilities `desktop.app.launch` and
+ * `desktop.app.close` through the existing Action Fabric. They reuse the real
+ * resolver + Win32 provider; success requires OBSERVED evidence (a real
+ * process appearing / disappearing), never "the call returned".
  */
 export function registerDesktopCapabilities(deps: {
   registry?: ActionRegistry;
   resolve?: (q: string) => AppSpec | null;
   launcher?: Launcher;
+  closer?: Closer;
   platform?: string;
 } = {}) {
   const registry = deps.registry ?? actionRegistry;
   const resolve = deps.resolve ?? resolveApp;
   const launcher = deps.launcher ?? windowsComputerUseProvider;
+  const closer = deps.closer ?? windowsComputerUseProvider;
   const platform = deps.platform ?? process.platform;
 
+  const fail = (code: FailureCode, stage: string, message: string) =>
+    ({ evidence: { kind: 'process', observed: false, summary: message } as Evidence, failure: { code, stage, message, retryable: false } });
+
+  // ── desktop.app.launch ────────────────────────────────────────────────
   registry.register({
     actionId: 'desktop.app.launch',
     capabilityId: 'desktop.control',
     requiresConfirmation: true, // OS-level action → explicit authorization via the fabric
     execute: async (req: ActionRequest) => {
       const app = (req.payload || {}).application;
-      const fail = (code: FailureCode, stage: string, message: string) =>
-        ({ evidence: { kind: 'process', observed: false, summary: message } as Evidence, failure: { code, stage, message, retryable: false } });
-
       if (platform !== 'win32') return fail('DESKTOP_CONTROL_UNAVAILABLE', 'platform', 'Desktop control is Windows-only in this build.');
       if (!isSafeAppName(app)) return fail('UNKNOWN', 'validate', 'Application name is empty or contains disallowed characters.');
       if (desktopControlStatus(platform) !== 'READY') return fail('DESKTOP_CONTROL_UNAVAILABLE', 'platform', 'Desktop control unavailable.');
@@ -64,5 +70,49 @@ export function registerDesktopCapabilities(deps: {
       ? { verified: true, method: 'processObserved', reason: evidence.summary }
       : { verified: false, method: 'processObserved', reason: 'No observed process/window evidence' },
   });
+
+  // ── desktop.app.close ─────────────────────────────────────────────────
+  registry.register({
+    actionId: 'desktop.app.close',
+    capabilityId: 'desktop.control',
+    requiresConfirmation: true, // terminates a running process → explicit authorization
+    execute: async (req: ActionRequest) => {
+      const app = (req.payload || {}).application;
+      if (platform !== 'win32') return fail('DESKTOP_CONTROL_UNAVAILABLE', 'platform', 'Desktop control is Windows-only in this build.');
+      if (!isSafeAppName(app)) return fail('UNKNOWN', 'validate', 'Application name is empty or contains disallowed characters.');
+      if (desktopControlStatus(platform) !== 'READY') return fail('DESKTOP_CONTROL_UNAVAILABLE', 'platform', 'Desktop control unavailable.');
+
+      const spec = resolve(app);
+      if (!spec) return fail('APP_NOT_FOUND', 'resolve', `Application not found in the allowed registry: ${app}`);
+      if (!spec.processName) return fail('APP_BLOCKED', 'resolve', `${app} has no resolvable process name to close.`);
+
+      const r = await closer.close(app);
+      // Nothing was running → cannot claim we closed something (truthful, not a fake success).
+      if (!r.wasRunning) return fail('APP_NOT_FOUND', 'execute', `${app} is not currently running.`);
+      // Was running but survived the terminate attempt (e.g. respawn) → NOT closed.
+      if (!r.closed) {
+        return fail('VERIFICATION_FAILED', 'verify', `${app} did not terminate (still running: pid ${r.remainingPids.join(', ')}).`);
+      }
+
+      const evidence: Evidence = {
+        kind: 'process', observed: true,
+        summary: `closed ${app}${r.killedPid ? ` (pid ${r.killedPid})` : ''} — process no longer observed`,
+        data: { app, killedPid: r.killedPid ?? null, processName: spec.processName, executable: expandEnv(spec.exe) },
+      };
+      return { output: r, evidence };
+    },
+    // COMPLETED only if the process was OBSERVED to terminate.
+    verify: ({ evidence }) => evidence && evidence.observed && evidence.kind === 'process' && !!evidence.data
+      ? { verified: true, method: 'processTerminated', reason: evidence.summary }
+      : { verified: false, method: 'processTerminated', reason: 'No observed process-termination evidence' },
+  });
+
   return registry;
+}
+
+// Register on the real singleton so the fabric actually exposes these capabilities
+// at runtime (mirrors how capabilities.ts self-registers memory.write on import).
+// Tests pass an injected fake registry and are unaffected by this default call.
+if (typeof process !== 'undefined' && process.env.AKANSHA_SKIP_DESKTOP_SELFREGISTER !== '1') {
+  registerDesktopCapabilities();
 }
