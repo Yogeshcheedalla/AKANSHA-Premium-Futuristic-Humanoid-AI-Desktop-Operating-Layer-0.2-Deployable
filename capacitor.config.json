@@ -12,7 +12,7 @@
     "contentInset": "always"
   },
   "server": {
-    "url": "https://akansha-gamma.vercel.app",
+    "url": "https://akansha-gamma.vercel.app/app",
     "cleartext": false,
     "androidScheme": "https"
   },

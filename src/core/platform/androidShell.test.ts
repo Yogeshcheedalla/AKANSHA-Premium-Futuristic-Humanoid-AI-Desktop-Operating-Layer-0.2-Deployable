@@ -11,9 +11,9 @@ const exists = (p: string) => fs.existsSync(path.join(ROOT, p));
 // Anything that depends on the GENERATED native project (android/, produced by `cap add android`)
 // is guarded so `npm test` stays green on machines that have not scaffolded the native project.
 
-test('capacitor config targets the real hosted Akansha origin (not localhost/dev)', () => {
+test('capacitor shell opens directly into the Akansha app (not the marketing landing)', () => {
   const cfg = JSON.parse(read('capacitor.config.json'));
-  assert.equal(cfg.server.url, 'https://akansha-gamma.vercel.app', 'production origin must be the actual deployment URL');
+  assert.equal(cfg.server.url, 'https://akansha-gamma.vercel.app/app', 'phone must boot into /app (sign-in gate/dashboard), not the / landing');
   assert.ok(!/localhost|127\.0\.0\.1|:3000/.test(cfg.server.url), 'no localhost/dev origin in the production shell');
   assert.ok(cfg.server.url.startsWith('https://'), 'TLS-only remote load');
 });
@@ -32,7 +32,7 @@ test('Android Capacitor project is scaffolded and its bundled config points at p
   const bundled = 'android/app/src/main/assets/capacitor.config.json';
   if (exists(bundled)) {
     const b = JSON.parse(read(bundled));
-    assert.equal(b.server.url, 'https://akansha-gamma.vercel.app', 'synced asset config matches production origin');
+    assert.equal(b.server.url, 'https://akansha-gamma.vercel.app/app', 'synced asset config points at the production app entry');
   }
 });
 

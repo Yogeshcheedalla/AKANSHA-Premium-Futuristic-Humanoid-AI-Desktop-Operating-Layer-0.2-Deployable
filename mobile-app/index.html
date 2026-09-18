@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- Hosted-origin shell: this local file is a dormant fallback only. Capacitor's
-         Bridge loads server.url (the production origin) directly at startup, so this page
-         is normally never shown. If it ever is (server.url missing/offline), it forwards to
-         the real Akansha landing rather than stranding the user on a fake offline page. -->
-    <meta http-equiv="refresh" content="0; url=https://akansha-gamma.vercel.app" />
+         Bridge loads server.url (the production APP entry) directly at startup, so the phone
+         opens straight into Akansha (sign-in gate / dashboard), NOT the marketing landing.
+         If this ever renders (server.url missing/offline), it forwards to the same /app entry. -->
+    <meta http-equiv="refresh" content="0; url=https://akansha-gamma.vercel.app/app" />
     <title>Akansha</title>
     <style>
       html,body{margin:0;height:100%;background:#010208;color:#8be9fd;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center}
@@ -19,9 +19,9 @@
   <body>
     <div class="box"><span class="dot"></span>Opening Akansha…</div>
     <script>
-      // Forward to the canonical hosted origin (never a local/offline landing).
-      var ORIGIN = 'https://akansha-gamma.vercel.app';
-      try { if (window.location.href.indexOf(ORIGIN) !== 0) { window.location.replace(ORIGIN); } } catch (e) {}
+      // Forward straight to the Akansha app entry (never the marketing landing).
+      var ENTRY = 'https://akansha-gamma.vercel.app/app';
+      try { if (window.location.href.indexOf(ENTRY) !== 0) { window.location.replace(ENTRY); } } catch (e) {}
     </script>
   </body>
 </html>
