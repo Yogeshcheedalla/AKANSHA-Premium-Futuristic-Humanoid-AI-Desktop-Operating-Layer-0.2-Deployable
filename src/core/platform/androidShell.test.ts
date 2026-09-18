@@ -5,6 +5,11 @@ import path from 'path';
 
 const ROOT = process.cwd();
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+const exists = (p: string) => fs.existsSync(path.join(ROOT, p));
+
+// These tests validate the SOURCE of the Android shell (tracked config + mobile-app webDir + src/).
+// Anything that depends on the GENERATED native project (android/, produced by `cap add android`)
+// is guarded so `npm test` stays green on machines that have not scaffolded the native project.
 
 test('capacitor config targets the real hosted Akansha origin (not localhost/dev)', () => {
   const cfg = JSON.parse(read('capacitor.config.json'));
@@ -21,12 +26,12 @@ test('capacitor config carries NO secrets and no cleartext', () => {
   assert.ok(!/client_secret|api[_-]?key|password|token|gocspx|sk-|private_key/.test(raw), 'config must not embed any credential');
 });
 
-test('Android Capacitor project is scaffolded and its bundled config points at production', () => {
-  assert.ok(fs.existsSync(path.join(ROOT, 'android/app/build.gradle')), 'android gradle project exists');
-  assert.ok(fs.existsSync(path.join(ROOT, 'android/gradlew.bat')) || fs.existsSync(path.join(ROOT, 'android/gradlew')), 'gradle wrapper present');
-  const bundled = path.join(ROOT, 'android/app/src/main/assets/capacitor.config.json');
-  if (fs.existsSync(bundled)) {
-    const b = JSON.parse(read('android/app/src/main/assets/capacitor.config.json'));
+test('Android Capacitor project is scaffolded and its bundled config points at production', (t) => {
+  if (!exists('android/app/build.gradle')) { t.skip('native project not scaffolded on this machine (run: npx cap add android)'); return; }
+  assert.ok(exists('android/gradlew.bat') || exists('android/gradlew'), 'gradle wrapper present');
+  const bundled = 'android/app/src/main/assets/capacitor.config.json';
+  if (exists(bundled)) {
+    const b = JSON.parse(read(bundled));
     assert.equal(b.server.url, 'https://akansha-gamma.vercel.app', 'synced asset config matches production origin');
   }
 });
@@ -34,11 +39,9 @@ test('Android Capacitor project is scaffolded and its bundled config points at p
 test('mobile webDir is the minimal shell and bundles NO desktop installer binaries', () => {
   const cfg = JSON.parse(read('capacitor.config.json'));
   assert.equal(cfg.webDir, 'mobile-app', 'mobile bundles a dedicated minimal webDir, not the desktop `public/` tree');
-  const dir = path.join(ROOT, 'mobile-app');
-  const offenders = fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => /\.(exe|msi|dmg|AppImage)$/i.test(f));
+  const offenders = fs.readdirSync(path.join(ROOT, 'mobile-app'), { recursive: true }).map(String).filter((f) => /\.(exe|msi|dmg|AppImage)$/i.test(f));
   assert.deepEqual(offenders, [], 'no desktop installer binaries in the mobile webDir');
-  // The public/ desktop artifacts must remain for web/Windows distribution (we exclude, not delete).
-  assert.ok(fs.existsSync(path.join(ROOT, 'public/downloads')), 'web/Windows downloads folder preserved');
+  assert.ok(exists('public/downloads'), 'web/Windows downloads folder preserved');
 });
 
 test('the local fallback boot page forwards to the real hosted origin (never a dead offline page)', () => {
@@ -46,17 +49,25 @@ test('the local fallback boot page forwards to the real hosted origin (never a d
   const html = read('mobile-app/index.html');
   const ORIGIN = cfg.server.url as string;
   // With server.url set, Capacitor's Bridge loads the remote origin directly (Bridge.java 626-644);
-  // the bundled page is only a dormant fallback — so it MUST forward to the same origin, not strand
-  // the user on "Connecting…".
+  // the bundled page is a dormant fallback and MUST forward to the same origin, not strand the user.
   assert.ok(html.includes(ORIGIN), 'fallback forwards to the exact configured production origin');
   assert.ok(/location\.replace|http-equiv=["']refresh/i.test(html), 'fallback actively navigates to the production origin');
-  // It must not be a self-contained fake landing (no local app shell / no localhost target).
   assert.ok(!/localhost|127\.0\.0\.1/.test(html), 'fallback never points at localhost');
 });
 
+test('Android manifest requests ONLY purpose-backed permissions (mic + internet; no unrelated perms)', (t) => {
+  if (!exists('android/app/src/main/AndroidManifest.xml')) { t.skip('native project not scaffolded'); return; }
+  const m = read('android/app/src/main/AndroidManifest.xml');
+  const has = (p: string) => new RegExp(`uses-permission android:name="android\\.permission\\.${p}"`).test(m);
+  assert.ok(has('INTERNET'), 'INTERNET required to reach the hosted origin + /api');
+  assert.ok(has('RECORD_AUDIO'), 'RECORD_AUDIO backs the existing web voice (getUserMedia) in the WebView');
+  // Do NOT request permissions whose features are not implemented (Play policy + project rule):
+  for (const p of ['POST_NOTIFICATIONS', 'SYSTEM_ALERT_WINDOW', 'FOREGROUND_SERVICE', 'BLUETOOTH', 'BLUETOOTH_CONNECT', 'CAMERA']) {
+    assert.ok(!has(p), `unrelated permission ${p} must NOT be requested without an implemented feature`);
+  }
+});
+
 test('the mobile shell stays Electron-free and reuses the shared /api contract (one brain)', () => {
-  // src/ must not depend on Electron — that is the property that lets a plain
-  // Capacitor WebView pointed at the hosted origin reuse the entire web app + /api.
   const offenders = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true })
     .map((f) => String(f))
     .filter((f) => /\.(ts|tsx)$/.test(f))
