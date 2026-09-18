@@ -12,7 +12,7 @@
 // ============================================================
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage, Tray, nativeImage, clipboard } = require('electron');
 const { spawn, exec } = require('child_process');
 const http = require('http');
 const net = require('net');
@@ -20,6 +20,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const logic = require('./desktop-logic');
+const { createBackendLogger } = require('./backendLogger');
 
 const isDev = !app.isPackaged;
 const APP_PATH = isDev ? app.getAppPath() : path.join(process.resourcesPath, 'app');
@@ -33,6 +34,13 @@ let serverPort = 0;
 let tray = null;
 let minimizeToTrayEnabled = true;
 let voiceState = 'STANDBY';
+
+// Durable, redacted backend diagnostics (userData/backend.log) + last error for the UI.
+let backendLog = null;
+let lastError = null;
+let frontendLoaded = false;
+let healthAttempts = 0;
+function logEvent(level, event, data) { try { if (backendLog) backendLog[level](event, data); } catch { /* never crash on logging */ } }
 
 /**
  * Local desktop identity bootstrap.
@@ -70,6 +78,11 @@ function getLocalAccessSecret() {
 
 function setLifecycle(state, detail) {
   lifecycle = state;
+  logEvent(state === 'ERROR' ? 'error' : 'info', 'lifecycle', { state, detail: detail || null });
+  if (state === 'ERROR') {
+    lastError = { stage: detail || 'unknown', reason: detail || 'Unknown error', at: new Date().toISOString(), port: serverPort, pid: serverProcess ? serverProcess.pid : null };
+    if (!frontendLoaded) loadErrorPage(detail, { error: true });
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('akansha:lifecycle', { state, detail: detail || null, at: Date.now() });
   }
@@ -97,10 +110,14 @@ function nextBinPath() {
 /** Start the bundled Next.js production server as a child Node process. */
 async function startBackend() {
   setLifecycle('STARTING');
+  frontendLoaded = false;
+  healthAttempts = 0;
   serverPort = Number(process.env.AKANSHA_PORT) || (await findFreePort());
 
   const bin = nextBinPath();
+  logEvent('info', 'spawn_plan', { exe: process.execPath, entry: bin, cwd: APP_PATH, port: serverPort, packaged: app.isPackaged });
   if (!fs.existsSync(bin)) {
+    logEvent('error', 'backend_missing', { entry: bin, cwd: APP_PATH });
     setLifecycle('ERROR', `Bundled backend not found at ${bin}`);
     return;
   }
@@ -124,15 +141,19 @@ async function startBackend() {
       windowsHide: true,
     }
   );
+  logEvent('info', 'spawned', { pid: serverProcess.pid, port: serverPort });
 
-  serverProcess.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`));
-  serverProcess.stderr.on('data', (d) => process.stderr.write(`[backend] ${d}`));
+  serverProcess.stdout.on('data', (d) => { const t = String(d); process.stdout.write(`[backend] ${t}`); logEvent('info', 'stdout', { text: t.trim() }); });
+  serverProcess.stderr.on('data', (d) => { const t = String(d); process.stderr.write(`[backend] ${t}`); logEvent('warn', 'stderr', { text: t.trim() }); });
 
   serverProcess.on('exit', (code, signal) => {
+    logEvent('error', 'exit', { code, signal, healthAttempts, frontendLoaded });
     if (quitting) return;
-    setLifecycle('ERROR', `Backend exited unexpectedly (code=${code} signal=${signal}).`);
+    if (!frontendLoaded) setLifecycle('ERROR', `Backend exited unexpectedly (code=${code} signal=${signal}).`);
+    serverProcess = null;
   });
   serverProcess.on('error', (err) => {
+    logEvent('error', 'spawn_error', { message: err.message });
     if (quitting) return;
     setLifecycle('ERROR', `Failed to start backend: ${err.message}`);
   });
@@ -145,23 +166,39 @@ function healthUrl() {
 }
 
 /** Poll /api/health until the server answers 2xx (the app runs even without a DB). */
+let healthStartTs = 0;
 function waitForHealthy(attempt = 0) {
+  healthAttempts = attempt;
+  if (attempt === 0) healthStartTs = Date.now();
   setLifecycle('HEALTH_CHECK');
+  const started = Date.now();
   const req = http
     .get(healthUrl(), (res) => {
+      const latencyMs = Date.now() - started;
       res.resume();
       if (res.statusCode >= 200 && res.statusCode < 300) {
+        logEvent('info', 'health_ok', { attempt, status: res.statusCode, latencyMs, totalMs: Date.now() - healthStartTs });
         setLifecycle('READY');
         loadFrontend();
       } else if (attempt < 120) {
         setTimeout(() => waitForHealthy(attempt + 1), 500);
       } else {
-        setLifecycle('ERROR', 'Backend did not become healthy in time.');
+        const alive = !!(serverProcess && serverProcess.pid);
+        logEvent('error', 'health_timeout', { attempt, status: res.statusCode, alive, totalMs: Date.now() - healthStartTs });
+        setLifecycle('ERROR', alive
+          ? 'Backend process is alive but the health check never became ready.'
+          : 'Backend did not become healthy in time.');
       }
     })
     .on('error', () => {
       if (attempt < 120) setTimeout(() => waitForHealthy(attempt + 1), 500);
-      else setLifecycle('ERROR', 'Backend is not reachable.');
+      else {
+        const alive = !!(serverProcess && serverProcess.pid);
+        logEvent('error', 'health_unreachable', { attempt, alive, totalMs: Date.now() - healthStartTs });
+        setLifecycle('ERROR', alive
+          ? 'Backend process is alive but health endpoint is unreachable.'
+          : 'Backend is not reachable.');
+      }
     });
   req.setTimeout(2000, () => req.destroy(new Error('health timeout')));
 }
@@ -174,19 +211,51 @@ function frontendUrl() {
 
 function loadFrontend() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  frontendLoaded = true;
+  logEvent('info', 'frontend_loaded', { url: frontendUrl() });
   mainWindow.loadURL(frontendUrl());
 }
 
-function loadErrorPage(message) {
+function loadErrorPage(message, opts = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const safe = String(message || 'Unknown error').replace(/[<>&]/g, '');
+  const isError = !!opts.error;
+  const esc = (s) => String(s == null ? '' : s).replace(/[<>&]/g, '');
+  const e = lastError || {};
+  const buttons = isError
+    ? `<div class="btns">
+         <button onclick="akanshaDesktop.retryBackend()">RETRY</button>
+         <button onclick="akanshaDesktop.openBackendLogs()">OPEN LOGS</button>
+         <button onclick="akanshaDesktop.copyBackendDiagnostic()">COPY DIAGNOSTIC</button>
+         <button class="quit" onclick="akanshaDesktop.quit()">QUIT</button>
+       </div>`
+    : '';
+  const detail = isError
+    ? `<div class="grid">
+         <span>Failure stage</span><code>${esc(e.stage || message || 'unknown')}</code>
+         <span>Reason</span><code>${esc(e.reason || message || 'Unknown error')}</code>
+         <span>Timestamp</span><code>${esc(e.at || new Date().toISOString())}</code>
+         <span>Port</span><code>${esc(e.port || serverPort || 'n/a')}</code>
+         <span>Backend PID</span><code>${esc(e.pid || 'n/a')}</code>
+       </div>`
+    : '';
+  const title = isError ? 'Akansha backend startup failed' : 'Starting Akansha…';
+  const sub = isError ? 'The bundled local backend did not become ready. The details below come from the diagnostic log.' : (esc(message) || 'Please wait.');
   const html = `data:text/html,${encodeURIComponent(
     `<!doctype html><html><head><meta charset="utf-8"><title>Akansha</title>
-     <style>body{background:#010208;color:#f0f4ff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-     .card{max-width:520px;padding:32px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.03)}
-     h1{font-size:18px;margin:0 0 8px;color:#ff6b81}p{font-size:13px;line-height:1.6;color:rgba(240,244,255,.7)}code{color:#00f0ff}</style></head>
-     <body><div class="card"><h1>Akansha backend could not start</h1><p>${safe}</p>
-     <p>Retry: close this window and launch Akansha again. If it persists, check the logs.</p></div></body></html>`
+     <style>
+       body{background:#010208;color:#f0f4ff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+       .card{max-width:640px;padding:34px;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:rgba(255,255,255,.03)}
+       h1{font-size:18px;margin:0 0 10px;color:${isError ? '#ff6b81' : '#8fe9ff'}}
+       p{font-size:13px;line-height:1.6;color:rgba(240,244,255,.7);margin:0 0 18px}
+       code{color:#00f0ff;font-size:12px;word-break:break-all}
+       .grid{display:grid;grid-template-columns:130px 1fr;gap:8px 14px;font-size:12px;margin-bottom:20px}
+       .grid span{color:rgba(240,244,255,.45);text-transform:uppercase;letter-spacing:.06em;font-size:10px;align-self:center}
+       .btns{display:flex;gap:10px;flex-wrap:wrap}
+       button{cursor:pointer;font-family:inherit;font-size:12px;letter-spacing:.04em;padding:10px 16px;border-radius:11px;border:1px solid rgba(0,240,255,.4);background:rgba(0,240,255,.1);color:#8fe9ff}
+       button:hover{background:rgba(0,240,255,.2)}
+       button.quit{border-color:rgba(255,107,129,.4);background:rgba(255,107,129,.08);color:#ff9aa8}
+     </style></head>
+     <body><div class="card"><h1>${title}</h1><p>${sub}</p>${detail}${buttons}</div></body></html>`
   )}`;
   mainWindow.loadURL(html);
 }
@@ -248,6 +317,7 @@ function createWindow() {
 function killBackend() {
   if (!serverProcess) return;
   const pid = serverProcess.pid;
+  logEvent('info', 'shutdown', { pid });
   try {
     if (process.platform === 'win32' && pid) {
       exec(`taskkill /pid ${pid} /T /F`, () => {});
@@ -357,6 +427,10 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    try {
+      backendLog = createBackendLogger(app.getPath('userData'));
+      logEvent('info', 'app_start', { version: app.getVersion(), packaged: app.isPackaged, platform: process.platform });
+    } catch { /* logging is best-effort */ }
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         { label: 'Akansha', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'quit' }] },
@@ -376,6 +450,17 @@ if (!gotLock) {
     ipcMain.handle('akansha:show-window', () => { showMainWindow(); return { ok: true }; });
     ipcMain.handle('akansha:hide-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); return { ok: true }; });
     ipcMain.handle('akansha:quit', () => { quitting = true; app.quit(); return { ok: true }; });
+
+    // Backend diagnostics controls (used by the startup-failure screen).
+    ipcMain.handle('akansha:retry-backend', () => { logEvent('info', 'retry', {}); killBackend(); startBackend(); return { ok: true }; });
+    ipcMain.handle('akansha:open-backend-logs', async () => {
+      try { const p = backendLog ? backendLog.getLogPath() : ''; const err = await shell.openPath(p); return { ok: !err, path: p, error: err || null }; }
+      catch (e) { return { ok: false, error: e.message }; }
+    });
+    ipcMain.handle('akansha:copy-backend-diagnostic', () => {
+      try { clipboard.writeText(backendLog ? backendLog.diagnosticReport() : 'No diagnostic log available.'); return { ok: true }; }
+      catch (e) { return { ok: false, error: e.message }; }
+    });
 
     createWindow();
     startBackend();

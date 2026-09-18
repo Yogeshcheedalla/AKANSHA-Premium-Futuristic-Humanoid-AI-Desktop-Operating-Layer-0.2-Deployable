@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld('akanshaDesktop', {
   hideWindow() { return ipcRenderer.invoke('akansha:hide-window'); },
   quit() { return ipcRenderer.invoke('akansha:quit'); },
 
+  // Backend diagnostics controls (startup-failure screen).
+  retryBackend() { return ipcRenderer.invoke('akansha:retry-backend'); },
+  openBackendLogs() { return ipcRenderer.invoke('akansha:open-backend-logs'); },
+  copyBackendDiagnostic() { return ipcRenderer.invoke('akansha:copy-backend-diagnostic'); },
+
   // Tray -> renderer: start/stop the SAME authoritative AudioEngine (no 2nd mic).
   onVoiceCommand(callback) {
     const handler = (_e, payload) => callback(payload);
