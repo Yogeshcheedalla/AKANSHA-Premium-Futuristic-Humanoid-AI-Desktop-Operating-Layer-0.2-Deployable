@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorize } from '@/core/auth/guard';
-import { detectHardware } from '@/core/runtime/HardwareProbe';
+import { detectHardwareLive } from '@/core/runtime/HardwareProbe';
 import { loadCatalogForApp } from '@/core/catalog/catalogProvider';
 import { detectRuntimes, runtimeFor } from '@/core/runtime/RuntimeManager';
 import { evaluate } from '@/core/catalog/CompatibilityEngine';
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const model = catalog.models.find((m) => m.id === modelId);
     if (!model) return NextResponse.json({ ok: false, stage: 'idle', blocked: 'model-not-in-catalog' }, { status: 404 });
 
-    const hardware = detectHardware({});
+    const hardware = detectHardwareLive();
     const rt = runtimeFor(detectRuntimes(process.env.LLAMA_CPP_PATHS ? { 'llama.cpp': process.env.LLAMA_CPP_PATHS.split(',') } : {}).find((r) => r.adapter.name === 'llama.cpp'));
     const compat = evaluate(model, hardware, { available: rt.available, name: rt.name, supportsAcceleration: rt.supportsAcceleration });
     const state = initialPipelineState(model.id);

@@ -151,3 +151,56 @@ Landing now states Windows desktop control (app launch + close) as **verified** 
 
 ### 19.4 Gates (this session)
 `npm test` **321/321** (+9 focus-related) · `tsc --noEmit` clean · `next build` OK · `eslint` **0 errors** · `git diff --check` clean. LOCAL COMMIT ONLY — nothing pushed/deployed.
+
+---
+
+## 20. Model Center / runtime-decision — real accelerator probe (2026-09-19)
+
+### 20.1 What already existed (and was already honest) — reused, not rebuilt
+The "decide what this device can actually run → recommend → install → verify → route"
+pipeline is largely present and was NOT duplicated:
+- `HardwareProbe` → real `HardwareProfile` (CPU/RAM/free RAM/free disk/tier);
+- `CompatibilityEngine.evaluate(model, hardware, runtime)` → 0-100 score +
+  `EXCELLENT/GOOD/USABLE/SLOW/UNSUPPORTED` + `runnable` + reasons; performance labels
+  are only `Measured` when a real benchmark ran, else `Estimated/Unknown` (never fabricated);
+- `selectLocalModel(entries, hw, installed)` ranks the signed catalog and picks the best
+  fit, returning `recommendedId:null` / `offlineReady:false` when nothing fits (no silent cloud);
+- `installState.resolveCardState` reaches **READY only on `usable:true` from a real inference
+  pass** — there is no path to READY from "downloaded" alone;
+- `LocalModelRegistry` stays empty until a genuine `llama-cli` inference succeeds;
+- `/api/ai/{setup,install,mode}` already feed this to the Model Center.
+
+### 20.2 The genuine gap fixed this session — `HardwareProbe` accelerator probe: **REAL_VERIFIED**
+`detectHardware` previously learned about a GPU only from an `AKANSHA_GPU` env hint and
+reported **no VRAM at all** → recommendations were accelerator-blind. Added a best-effort,
+never-faking probe: `probeAccelerator(run)` tries `nvidia-smi` (name + total + **free**
+VRAM), then Windows `Win32_VideoController` (largest adapter; integrated adapters are marked
+and their shared RAM is **not** claimed as VRAM); any failure degrades to `{detected:false}`.
+It is injectable (a `CommandRunner`) so `detectHardware()`/`detectHardware({})` stay pure/fast
+for existing tests; production call sites (`getSetupViewModel`, `/api/ai/install`,
+`/api/ai/mode`) now use `detectHardwareLive()` and therefore consider the real device.
+Evidence: `hardwareProbe.accelerator.test.ts` (7 tests — NVIDIA, integrated-Intel→no VRAM,
+discrete AMD, no-GPU, garbage output→WMI fall-through, runner-applied, no-shell-out-when-absent).
+Live run on THIS laptop detected `Intel(R) UHD Graphics`, `integrated:true`, no fabricated VRAM
+(16.9 GB RAM / 3.1 GB free / 59 GB disk) and the honest recommendation is **`qwen2.5-1.5b-instruct-q4_k_m`**
+(CPU fit) — a Qwen3-30B-class model is correctly NOT recommended here.
+
+### 20.3 Download + real inference remain evidence-gated — **BLOCKED (not faked)**
+The multi-GB HuggingFace download and the real inference/benchmark step are NOT executed here
+(no such download attempted this session); a card can only become `READY` after a genuine
+inference pass writes to `LocalModelRegistry` (per 20.1). The recommendation decision layer is
+real and verified; the heavy install→inference runtime path is unchanged and remains gated on
+GPU/disk/network/inference actually running. No fake "READY"/"installed"/benchmark numbers.
+
+### 20.4 Deploy-thread reconciliation
+Web deploy from the prior turn is live-verified (Vercel serving the new code). The Windows
+installer + portable were **rebuilt from HEAD** this session (`dist:win`, exit 0):
+`Akansha-Setup-3.0.0.exe` 160,414,560 B sha256 `d57c55c2…83304`;
+`Akansha-Portable-3.0.0.exe` 160,123,115 B sha256 `67c52a90…f18e`. The GitHub **Release
+publish** (asset upload + repointing `AKANSHA_RELEASES`) is intentionally **held** — the ~160 MB
+upload has previously failed through this environment's proxy, and a half-uploaded release would
+degrade the live download; production still serves the prior verified v3.0.0 asset. Publishing the
+fresh build is a separate, connection-dependent human-gated step, not faked as done.
+
+### 20.5 Gates (this session)
+`npm test` **328/328** (+7 accelerator) · `tsc --noEmit` clean · `next build` OK · `eslint` **0 errors** · `git diff --check` clean. LOCAL COMMIT ONLY — nothing further pushed/deployed.

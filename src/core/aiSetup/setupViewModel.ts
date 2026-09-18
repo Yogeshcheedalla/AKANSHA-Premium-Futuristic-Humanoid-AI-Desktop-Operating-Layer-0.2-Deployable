@@ -11,7 +11,7 @@
  * The pure `buildSetupViewModel(deps)` is offline-testable with injected fakes;
  * `getSetupViewModel()` gathers the real dependencies at request time.
  */
-import { detectHardware, type HardwareProfile } from '@/core/runtime/HardwareProbe';
+import { detectHardware, execRun, type CommandRunner, type HardwareProfile } from '@/core/runtime/HardwareProbe';
 import { detectRuntimes, runtimeFor } from '@/core/runtime/RuntimeManager';
 import { evaluate } from '@/core/catalog/CompatibilityEngine';
 import { loadCatalogForApp, type CatalogResult } from '@/core/catalog/catalogProvider';
@@ -99,8 +99,8 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
 }
 
 /** Production gatherer — reads the REAL device/runtime/catalog/connection state. */
-export function getSetupViewModel(cs: ConnectedServices = defaultConnected, env = process.env): SetupViewModel {
-  const hardware = detectHardware({});
+export function getSetupViewModel(cs: ConnectedServices = defaultConnected, env = process.env, run: CommandRunner = execRun): SetupViewModel {
+  const hardware = detectHardware({ run });
   const catalog = loadCatalogForApp(env);
   const runtimes = detectRuntimes(env.LLAMA_CPP_PATHS ? { 'llama.cpp': env.LLAMA_CPP_PATHS.split(',') } : {});
   const rt = runtimeFor(runtimes.find((r) => r.adapter.name === 'llama.cpp'));

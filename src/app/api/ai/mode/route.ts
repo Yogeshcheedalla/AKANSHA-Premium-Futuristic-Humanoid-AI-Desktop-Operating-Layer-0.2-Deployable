@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorize } from '@/core/auth/guard';
 import { modelRouter } from '@/core/models/ModelRouter';
-import { detectHardware } from '@/core/runtime/HardwareProbe';
+import { detectHardwareLive } from '@/core/runtime/HardwareProbe';
 import { loadCatalogForApp } from '@/core/catalog/catalogProvider';
 import { toManifestEntry } from '@/core/catalog/ModelCatalog';
 import { decideAiMode, type AiMode } from '@/core/models/AiMode';
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     if (!['offline', 'cloud', 'both', 'auto'].includes(mode)) {
       return NextResponse.json({ ok: false, error: 'invalid mode' }, { status: 400 });
     }
-    const hardware = detectHardware({});
+    const hardware = detectHardwareLive();
     const catalog = loadCatalogForApp(process.env);
     const modelEntries = catalog.models.map(toManifestEntry);
     // No usable local model registry exists yet → offline honestly not-ready.
