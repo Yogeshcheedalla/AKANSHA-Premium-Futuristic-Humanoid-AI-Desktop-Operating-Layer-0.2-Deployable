@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
 import { Cpu, HardDrive, MemoryStick, Monitor, Boxes, Loader2, CheckCircle, AlertTriangle, XCircle, Download, Globe, WifiOff } from 'lucide-react';
 import type { SetupViewModel, ModelCardVM, InstallResult } from '@/core/aiSetup/types';
+import { toSearchCards, type SearchCard } from './modelSearchView';
 import { resolveCardState } from '@/core/catalog/installState';
 
 const RATING_STYLE: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -24,6 +25,10 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
   const [install, setInstall] = useState<Record<string, InstallResult | 'busy'>>({});
   const [connecting, setConnecting] = useState(false);
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
+  const [searchQ, setSearchQ] = useState('');
+  const [searchCards, setSearchCards] = useState<SearchCard[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
 
   // Continue with OpenRouter: kick off the secure PKCE flow server-side, then hand
   // off to OpenRouter's OWN authorization/signup page in a new tab. Akansha never
@@ -72,6 +77,23 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
+  const doSearch = async () => {
+    const q = searchQ.trim();
+    if (!q) { setSearchCards(null); setSearchErr(null); return; }
+    setSearching(true); setSearchErr(null);
+    try {
+      const res = await fetch(`/api/models/search?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
+      const d = await res.json();
+      if (!res.ok || !d.ok) { setSearchCards([]); setSearchErr(d?.error || 'Search unavailable'); return; }
+      const catalogIds = (vm?.catalog.models || []).map((m) => m.id);
+      setSearchCards(toSearchCards(d.results || [], catalogIds));
+    } catch {
+      setSearchCards([]); setSearchErr('Search is offline — no results.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-white/40 text-sm flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Analyzing your device…</div>;
   if (error) return <div className="p-8 text-rose-400 text-sm">Setup unavailable: {error}</div>;
   if (!vm) return null;
@@ -102,7 +124,7 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
       {/* Runtime */}
       <div className={`rounded-xl px-4 py-3 mb-4 text-sm border ${vm.runtime.available ? 'border-emerald-400/20 bg-emerald-400/5 text-emerald-300' : 'border-amber-400/20 bg-amber-400/5 text-amber-300'}`}>
         {vm.runtime.available ? <span className="flex items-center gap-2"><CheckCircle size={14} /> Inference runtime: {vm.runtime.name}{vm.runtime.version ? ` (${vm.runtime.version})` : ''}</span>
-          : <span className="flex items-center gap-2"><WifiOff size={14} /> LOCAL RUNTIME NOT DETECTED — offline AI needs llama.cpp/Ollama. Akansha will not fake inference.</span>}
+          : <span className="flex items-center gap-2"><WifiOff size={14} /> LOCAL RUNTIME NOT DETECTED — offline AI needs the llama.cpp runtime. Akansha will not fake inference.</span>}
       </div>
 
       {/* AI mode */}
@@ -220,6 +242,48 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
               </GlassSurface>
             );
           })}
+        </div>
+      )}
+
+      {/* Model Discovery — search the hub; INSTALL only for signed-catalog models (existing ModelManager) */}
+      <div className="text-xs uppercase tracking-widest text-white/40 mb-3 mt-6">Search models</div>
+      <div className="flex gap-2 mb-3">
+        <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
+          placeholder='e.g. "coding 7b", "vision", "qwen"'
+          className="flex-1 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2 text-sm text-white/80 placeholder:text-white/25 focus:border-cyan-400/40 outline-none" />
+        <button onClick={doSearch} disabled={searching || !searchQ.trim()}
+          className="px-4 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 disabled:opacity-40 hover:bg-cyan-500/20 transition-colors">
+          {searching ? <Loader2 size={14} className="animate-spin" /> : 'Search'}
+        </button>
+      </div>
+      {searchErr && <div className="text-[11px] text-amber-300/80 mb-2">{searchErr}</div>}
+      {searchCards && searchCards.length === 0 && !searching && !searchErr && <div className="text-[11px] text-white/40 mb-2">No models found (or search is offline).</div>}
+      {searchCards && searchCards.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {searchCards.map((c) => (
+            <GlassSurface key={c.id} className="p-5 rounded-2xl flex flex-col">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-white/90 font-medium truncate">{c.name}</div>
+                  <div className="text-[11px] text-white/40">{c.publisher} · {c.gguf ? 'GGUF' : 'non-GGUF'} · {c.downloads.toLocaleString()} dl · {c.likes} likes{c.license ? ` · ${c.license}` : ''}</div>
+                </div>
+                <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full ${c.classification.installable ? 'bg-emerald-400/10 text-emerald-300' : 'bg-white/5 text-white/40'}`}>{c.classification.installable ? 'Compatible' : 'Check'}</span>
+              </div>
+              <div className="text-[11px] text-white/45 mt-2">{c.installReason}</div>
+              <div className="flex items-center gap-2 mt-3">
+                <button disabled={!c.installable} onClick={() => doInstall(c.id)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cyan-500/20 transition-colors">
+                  <Download size={13} /> Install
+                </button>
+                <a href={c.repoUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs border border-white/10 text-white/60 hover:text-white/80 hover:border-white/20 transition-colors">
+                  <Globe size={13} /> Source
+                </a>
+              </div>
+              {install[c.id] && install[c.id] !== 'busy' && <div className="text-[11px] mt-2 text-white/40">READY only after a real inference test.</div>}
+            </GlassSurface>
+          ))}
         </div>
       )}
 
