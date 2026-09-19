@@ -299,6 +299,8 @@ The previously‑BLOCKED production database is now live. Supabase Free (Postgre
 
 **Evidence — live Vercel production:** `/api/health` → `{database:"up", persistence:"enabled"}` (was `unavailable/disabled`).
 
+**Evidence — runtime durable-write check (`scripts/db-runtime-write-check.ts`, `npm run db:runtimecheck`):** exercises every table the app writes to through the real `@/db` client + drizzle schema against the connected Supabase → **12/12 tables writable · read‑back PASS · durable persistence FULLY FUNCTIONAL** (memory_entries, action_executions, decision_traces, request_ledger, model_providers, provider_models, connector_connections, credentials, device_sessions, missions, jobs, action_events). Confirms no schema drift and no RLS regression on the app's owner connection (Supabase `postgres` bypasses RLS by design; `authenticated`/`anon` remain isolated).
+
 **Two real fixes were required (both in the persistence layer only — no architecture change):**
 1. `scripts/db-provision.ts` — resolves the RLS test role by **probing which non‑owner role the connecting user can actually `SET ROLE` to** (`akansha_app` → `authenticated` → `anon`). Supabase's `postgres` can `CREATE ROLE` but cannot `SET ROLE` to a role it isn't a member of, so isolation is verified as `authenticated`.
 2. `src/db/index.ts` — TLS. `sslmode=require` in the connection string forced **strict** verification, which failed on Supabase's self‑signed intermediate (`SELF_SIGNED_CERT_IN_CHAIN`). It now **strips `sslmode`** and uses encrypted‑but‑not‑CA‑pinned TLS by default; strict pinning is opt‑in via `AKANSHA_DB_SSL_VERIFY=1`. `/api/health` also gained a redacted `databaseReason`/`dbConfigured`/`dbSsl` diagnostic.
