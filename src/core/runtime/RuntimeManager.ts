@@ -8,7 +8,7 @@
  * built-in adapter today is llama.cpp; the shape is extensible for future
  * runtimes without touching the model layer.
  */
-import { detectLlamaRuntime } from '@/core/models/local/LocalGgufProvider';
+import { detectLlamaRuntime, defaultLlamaCandidates } from '@/core/models/local/LocalGgufProvider';
 import type { LocalRuntime } from '@/core/models/local/LocalGgufProvider';
 
 export interface RuntimeAdapter {
@@ -39,7 +39,8 @@ export const KNOWN_RUNTIMES: RuntimeAdapter[] = [LLAMA_CPP];
  */
 export function detectRuntimes(candidatesByRuntime: Record<string, string[]> = {}): InstalledRuntime[] {
   return KNOWN_RUNTIMES.map((adapter) => {
-    const paths = candidatesByRuntime[adapter.name] ?? adapter.candidateBinaries;
+    const given = candidatesByRuntime[adapter.name] ?? adapter.candidateBinaries;
+    const paths = [...given, ...defaultLlamaCandidates()];
     const detect = detectLlamaRuntime(paths);
     return { adapter, detect, healthy: detect.exists };
   });

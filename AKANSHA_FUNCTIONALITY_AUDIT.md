@@ -321,3 +321,20 @@ The previously‑BLOCKED production database is now live. Supabase Free (Postgre
 - **Persisted READY ✓** — `readUsable()` read the record back from the registry → the model is genuinely `READY`.
 
 **Status change:** Model Center `READY` — `REAL_VERIFIED (target machine)`. The recommendation → integrity → runtime → inference → benchmark → register → READY chain is proven end‑to‑end with real evidence. (For the *packaged* desktop app, the same registry is populated once the runtime is provisioned into the app's own data dir — an operator/packaging step, not a code gap.)
+
+---
+
+## 26. Packaged‑app runtime discovery — code gap closed + verified (2026-09-19)
+
+The one thing still missing for packaged Model Center readiness was that the app only found a llama.cpp runtime via the `LLAMA_CPP_PATHS` env — which the installed app never sets. Now:
+
+- `defaultLlamaCandidates()` (LocalGgufProvider) probes the **packaged** `process.resourcesPath/runtime/llama/llama-cli(.exe)`, the **provisioned** `AKANSHA_HOME/runtime/llama/…`, and the **repo/dev** `runtime/llama/…`.
+- `RuntimeManager.detectRuntimes` and `ProviderManager.syncLocalProviders` merge those candidates, so a bundled/provisioned runtime is discovered **without any env var**.
+- `electron-builder.yml` adds `extraResources: runtime → runtime`, so the runtime is shipped inside the packaged app.
+- A clean checkout with **no** runtime present still fabricates nothing — `detectRuntimes({})` reports not‑available (regression test `llamaRuntimeDiscovery.test.ts`, 3 tests; the existing "never fabricates a runtime" test still passes).
+
+**Verification:** with a complete llama.cpp distribution placed at `runtime/llama/`, `scripts/verify-packaged-runtime.ts` (running with `LLAMA_CPP_PATHS` deleted, i.e. packaged‑like) reported **runtime discovered → persisted usable model → `aiMode.offlineReady:true` → "Packaged‑app Model Center READY path: VERIFIED."**
+
+**Remaining build/operator step (not a code gap):** populate `runtime/llama/` with the llama.cpp distribution before `npm run dist:win` (a large third‑party binary — intentionally gitignored, never committed), and let the installed app download a model into its own `userData` via the Model Center. The discovery + install + inference + persist + READY code path is wired and verified; the shipped installer just needs the runtime bundle dropped in.
+
+Gates: `npm test` **337/337** · tsc clean · `next build` OK · eslint 0 errors · `git diff --check` clean.

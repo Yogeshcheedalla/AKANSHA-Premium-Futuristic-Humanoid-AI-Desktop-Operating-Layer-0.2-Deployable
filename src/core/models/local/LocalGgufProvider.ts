@@ -19,6 +19,7 @@ import type {
 } from '@/core/models/ModelProvider';
 import { verifyArtifact, type ManifestModelEntry } from '@/core/models/local/ModelIntegrity';
 import * as fs from 'node:fs';
+import { join } from 'node:path';
 
 export interface LocalRuntime {
   /** Absolute path to an executable llama.cpp CLI (detected, never downloaded here). */
@@ -42,6 +43,23 @@ export function detectLlamaRuntime(candidatePaths: string[]): LocalRuntime {
   const found = candidatePaths.find((p) => { try { return !!p && fs.existsSync(p); } catch { return false; } }) || null;
   if (!found) return { binaryPath: null, exists: false };
   return { binaryPath: found, exists: true };
+}
+
+/**
+ * Standard locations a llama.cpp runtime may have been bundled or provisioned
+ * into — packaged Electron resources, the app-controlled data dir, and the repo
+ * (dev). These are CANDIDATE paths only; detectLlamaRuntime existence-checks them,
+ * so nothing is ever assumed present. The runtime is placed here by the installer
+ * build (electron-builder extraResources) or an operator provisioning step.
+ */
+export function defaultLlamaCandidates(): string[] {
+  const exe = process.platform === 'win32' ? 'llama-cli.exe' : 'llama-cli';
+  const out: string[] = [];
+  const rp = (process as { resourcesPath?: string }).resourcesPath;
+  if (rp) out.push(join(rp, 'runtime', 'llama', exe));                       // packaged app
+  if (process.env.AKANSHA_HOME) out.push(join(process.env.AKANSHA_HOME, 'runtime', 'llama', exe)); // provisioned per-user
+  out.push(join(process.cwd(), 'runtime', 'llama', exe));                     // repo / dev
+  return out;
 }
 
 /**

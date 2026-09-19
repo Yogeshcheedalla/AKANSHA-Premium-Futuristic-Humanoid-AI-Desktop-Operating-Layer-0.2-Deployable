@@ -41,6 +41,16 @@ files:
 extraMetadata:
   main: electron/main.js
 
+# Bundle a provisioned inference runtime (llama.cpp) into the packaged app so the
+# Model Center can run REAL local inference offline. Operator/build step: drop the
+# llama.cpp Windows distribution at runtime/llama/ (llama-cli.exe + its DLLs) before
+# `npm run dist:win`; the app discovers it via process.resourcesPath/runtime/llama.
+# An empty runtime/ dir simply means no offline runtime is offered — never assumed.
+extraResources:
+  - from: runtime
+    to: runtime
+    filter: ["**/*"]
+
 # ─────────── WINDOWS ───────────
 # build/icon.png (>= 256x256) is converted to .ico automatically by electron-builder.
 win:

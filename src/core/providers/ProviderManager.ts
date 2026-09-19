@@ -3,7 +3,7 @@ import { modelProviders, providerModels } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { createProvider, type ProviderConfigInput } from '../../integrations/models/ProviderFactory';
 import type { ModelProvider, ModelInfo, HealthStatus, ProviderType } from '../models/ModelProvider';
-import { LocalGgufProvider, detectLlamaRuntime, type LocalModelState } from '../models/local/LocalGgufProvider';
+import { LocalGgufProvider, detectLlamaRuntime, defaultLlamaCandidates, type LocalModelState } from '../models/local/LocalGgufProvider';
 import { readUsable } from '../models/local/LocalModelRegistry';
 import { credentialVault } from '../security/CredentialVault';
 import { eventBus } from '../events/EventBus';
@@ -138,10 +138,11 @@ export class ProviderManager {
    */
   private syncLocalProviders(): void {
     try {
-      const paths = (process.env.LLAMA_CPP_PATHS || '')
+      const envPaths = (process.env.LLAMA_CPP_PATHS || '')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      const paths = [...envPaths, ...defaultLlamaCandidates()];
       if (paths.length === 0) return;
 
       const runtime = detectLlamaRuntime(paths);

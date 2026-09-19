@@ -169,3 +169,7 @@ release/*.log
 .akansha-keys/
 
 .vercel
+
+# Provisioned inference runtime binaries (placed by build/operator; never committed)
+runtime/*
+!runtime/.gitkeep
