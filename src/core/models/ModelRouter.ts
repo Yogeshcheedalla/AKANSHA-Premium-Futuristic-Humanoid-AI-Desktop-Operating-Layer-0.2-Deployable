@@ -9,7 +9,7 @@ import type {
   HealthStatus,
 } from './ModelProvider';
 import { eventBus } from '../events/EventBus';
-import { freeFirstCompare } from '../routing/costPolicy';
+import { freeFirstCompare, allRoutesPaid } from '../routing/costPolicy';
 
 export interface RoutingCandidate {
   providerId: string;
@@ -26,6 +26,7 @@ export interface RoutingDecision {
   capabilitiesMatched: string[];
   estimatedLatencyMs: number;
   candidates: RoutingCandidate[];
+  requiresPaidConsent: boolean;
 }
 
 export type RoutingPolicy = 'LOCAL_ONLY' | 'CLOUD_ONLY' | 'PREFERRED_LOCAL' | 'PREFERRED_CLOUD' | 'BALANCED' | 'MANUAL';
@@ -251,6 +252,7 @@ export class ModelRouter {
       capabilitiesMatched: requiredCapabilities,
       estimatedLatencyMs: top.latencyEstimateMs,
       candidates,
+      requiresPaidConsent: allRoutesPaid(candidates),
     };
 
     eventBus.emit('model.selected', 'ModelRouter', {
@@ -300,6 +302,7 @@ export class ModelRouter {
       capabilitiesMatched: requiredCapabilities,
       estimatedLatencyMs: chain[0].latencyEstimateMs,
       candidates: chain,
+      requiresPaidConsent: allRoutesPaid(chain),
     };
 
     // Provider-diverse ordering: try the best model of EACH provider before

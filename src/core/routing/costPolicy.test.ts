@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { costTierFor, planCostRoute, freeFirstCompare } from './costPolicy';
+import { costTierFor, planCostRoute, freeFirstCompare, allRoutesPaid, paidConsentPrompt } from './costPolicy';
 
 test('cost tiers: local < free(openrouter) < paid', () => {
   assert.equal(costTierFor('local'), 'local');
@@ -37,4 +37,34 @@ test('empty candidates → no recommendation, no consent claim', () => {
 test('freeFirstCompare is a stable cheaper-first tiebreaker', () => {
   const rows = [{ providerId: 'openai' }, { providerId: 'local' }, { providerId: 'openrouter' }];
   assert.deepEqual([...rows].sort(freeFirstCompare).map((r) => r.providerId), ['local', 'openrouter', 'openai']);
+});
+
+test('allRoutesPaid: false when any free/local route exists', () => {
+  assert.equal(allRoutesPaid([{ providerId: 'openai' }, { providerId: 'openrouter' }]), false);
+  assert.equal(allRoutesPaid([{ providerId: 'openai' }, { providerId: 'local' }]), false);
+});
+
+test('allRoutesPaid: true only when every route is paid; empty is false', () => {
+  assert.equal(allRoutesPaid([{ providerId: 'openai' }, { providerId: 'anthropic' }]), true);
+  assert.equal(allRoutesPaid([]), false);
+});
+
+test('paidConsentPrompt: not required when a free/local route exists', () => {
+  const p = paidConsentPrompt([{ providerId: 'openai', modelId: 'gpt-x' }, { providerId: 'local', modelId: 'qwen' }]);
+  assert.equal(p.required, false);
+});
+
+test('paidConsentPrompt: required for paid-only, with options + honest unknown cost', () => {
+  const p = paidConsentPrompt([{ providerId: 'openai', modelId: 'gpt-x' }]);
+  assert.equal(p.required, true);
+  assert.equal(p.provider, 'openai');
+  assert.equal(p.model, 'gpt-x');
+  assert.match(p.cost, /unavailable/i);
+  assert.deepEqual(p.options, ['continue-paid', 'use-free-local', 'cancel']);
+});
+
+test('free/local selection excludes paid (planCostRoute orders local first)', () => {
+  const plan = planCostRoute([{ providerId: 'openai', modelId: 'gpt' }, { providerId: 'local', modelId: 'qwen' }]);
+  assert.equal(plan.recommended?.providerId, 'local');
+  assert.equal(plan.requiresPaidConsent, false);
 });

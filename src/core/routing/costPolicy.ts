@@ -51,3 +51,34 @@ export function planCostRoute<T extends { providerId: string }>(candidates: T[])
           : 'only paid routes available — ask before spending',
   };
 }
+
+/** True only when there are candidates and NONE is a free/local route. */
+export function allRoutesPaid(candidates: { providerId: string }[]): boolean {
+  return candidates.length > 0 && candidates.every((c) => costTierFor(c.providerId) === 'paid');
+}
+
+export interface PaidConsentPrompt {
+  required: boolean;
+  provider?: string;
+  model?: string;
+  cost: string;
+  options: Array<'continue-paid' | 'use-free-local' | 'cancel'>;
+}
+
+/**
+ * The explicit paid-consent decision. Returns required:true ONLY when every viable
+ * route is paid (no free/local alternative) — so the UI must stop and ask before
+ * spending. Never shown when a free/local route exists. Cost is honestly unknown
+ * unless a provider supplies it.
+ */
+export function paidConsentPrompt<T extends { providerId: string; modelId?: string }>(candidates: T[]): PaidConsentPrompt {
+  if (!allRoutesPaid(candidates)) return { required: false, cost: '', options: [] };
+  const top = candidates[0];
+  return {
+    required: true,
+    provider: top.providerId,
+    model: top.modelId,
+    cost: 'Cost unavailable from provider.',
+    options: ['continue-paid', 'use-free-local', 'cancel'],
+  };
+}
