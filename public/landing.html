@@ -927,38 +927,40 @@ document.querySelectorAll('[data-count]').forEach(el=>co.observe(el));
 if ('serviceWorker' in navigator){
   addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
-/* ═════════ TRUTH-DRIVEN WINDOWS DOWNLOAD (consumes /api/releases) ═════════ */
+/* ═════════ TRUTH-DRIVEN PLATFORM DOWNLOADS (consumes /api/releases) ═════════ */
 (function(){
+  const q = s => document.querySelector(s);
   function fmtSize(b){ if(!b) return ''; const mb=b/1048576; return mb>=1024?(mb/1024).toFixed(1)+' GB':mb.toFixed(0)+' MB'; }
-  function applyWindows(card, art){
+  function applyCard(card, art, verb, isWindows){
     if(!card) return;
     const meta = card.querySelector('.dl-meta'), cta = card.querySelector('.dl-cta');
     const pill = card.querySelector('.dl-status'), plab = pill && pill.querySelector('.st-label');
     if(art && art.available){
       card.setAttribute('href', art.url); card.setAttribute('download','');
       card.style.pointerEvents=''; card.style.opacity='';
-      if(cta) cta.textContent = 'DOWNLOAD FOR WINDOWS';
+      if(cta) cta.textContent = verb;
       if(pill){ pill.className='dl-status st-ready'; if(plab) plab.textContent='Available'; }
       if(meta){ const bits=[]; if(art.version)bits.push('v'+art.version); if(art.size)bits.push(fmtSize(art.size)); if(art.sha256)bits.push('SHA-256 '+String(art.sha256).slice(0,12)+'…');
-        meta.innerHTML='<span class="pulse-dot"></span><span>'+(bits.join(' · ')||'Verified installer')+'</span>'; }
-    } else {
+        meta.innerHTML='<span class="pulse-dot"></span><span>'+(bits.join(' · ')||'Verified build')+'</span>'; }
+    } else if(isWindows){
+      // Windows is the flagship native installer: if unpublished, downgrade honestly.
       card.removeAttribute('href'); card.removeAttribute('download');
       card.style.pointerEvents='none'; card.style.opacity='.55';
       if(cta) cta.textContent = 'Coming shortly';
       if(pill){ pill.className='dl-status st-build'; if(plab) plab.textContent='Publishing…'; }
       if(meta) meta.innerHTML='<span>Installer being published…</span>';
     }
+    // Non-Windows cards with no published artifact keep their honest authored status.
   }
-  // Only the Windows native installer is a published release artifact here. macOS/Linux
-  // (source launcher) and Android/iOS (PWA) cards keep their honest authored status and
-  // are intentionally NOT rewritten to a generic "coming soon".
+  function pick(rel, platform, types){ for(const t of types){ const a = rel.find(x => x && x.available && x.platform===platform && x.type===t); if(a) return a; } return null; }
   fetch('/api/releases').then(r=>r.ok?r.json():null).then(data=>{
     const rel = (data && Array.isArray(data.releases)) ? data.releases : [];
-    const win = rel.find(a=>a && a.available && a.platform==='windows' && a.type!=='portable');
-    const portable = rel.find(a=>a && a.available && a.platform==='windows' && a.type==='portable');
-    applyWindows(document.getElementById('winSetup'), win);
-    applyWindows(document.getElementById('winPortable'), portable);
-  }).catch(()=>{ applyWindows(document.getElementById('winSetup'), null); applyWindows(document.getElementById('winPortable'), null); });
+    applyCard(q('.plat-panel[data-plat="win"] .dl-card'), pick(rel,'windows',['installer']), 'DOWNLOAD FOR WINDOWS', true);
+    applyCard(q('#winPortable'), pick(rel,'windows',['portable']), 'DOWNLOAD PORTABLE', true);
+    applyCard(q('.plat-panel[data-plat="linux"] .dl-card'), pick(rel,'linux',['appimage','deb']), 'DOWNLOAD FOR LINUX', false);
+    applyCard(q('.plat-panel[data-plat="mac"] .dl-card'), pick(rel,'macos',['dmg']), 'DOWNLOAD FOR MAC', false);
+    applyCard(q('.plat-panel[data-plat="android"] .dl-card'), pick(rel,'android',['apk']), 'GET AKANSHA APK', false);
+  }).catch(()=>{ applyCard(q('.plat-panel[data-plat="win"] .dl-card'), null, '', true); applyCard(q('#winPortable'), null, '', true); });
 })();
 
 /* ═════════ GOOGLE AUTH WIDGET + callback status ═════════ */
