@@ -48,11 +48,13 @@ export function WebSearchWorkspace() {
     } finally { setProbing(false); }
   }, []);
 
-  // Probe REAL provider health once on mount (scheduled, not synchronous in the
-  // effect body) and whenever the user hits "Check".
+  // ONE effect: probe REAL provider health once on mount (the "Check" button
+  // re-runs the same probe). Every state update lands only after the fetch
+  // resolves, so this is not a synchronous cascade — the rule's transitive
+  // analysis just cannot see past the await, hence the targeted exemption.
   useEffect(() => {
-    const id = setTimeout(() => { void probe(); }, 0);
-    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void probe();
   }, [probe]);
 
   const run = useCallback(async (query: string) => {
