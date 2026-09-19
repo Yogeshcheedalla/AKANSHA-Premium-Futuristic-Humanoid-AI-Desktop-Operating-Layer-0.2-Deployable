@@ -47,7 +47,10 @@ async function main() {
     return finish();
   }
 
-  const admin = new Pool({ connectionString: ADMIN_URL, max: 4 });
+  const ssl = /sslmode=require/i.test(ADMIN_URL)
+    ? { require: true, rejectUnauthorized: process.env.AKANSHA_DB_SSL_VERIFY !== '0' }
+    : undefined;
+  const admin = new Pool({ connectionString: ADMIN_URL, ssl, max: 4 });
   let testRole = APP_ROLE;
   try {
     // 1. connection
@@ -90,20 +93,36 @@ async function main() {
       }
     } catch (e: any) { record('pgvector', 'FAIL', e?.message || 'vector check failed'); }
 
-    // 5. resolve a non-owner test role: create one, else reuse the provider's `authenticated`
-    try {
-      await admin.query(`DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='${APP_ROLE}') THEN CREATE ROLE ${APP_ROLE} NOLOGIN; END IF; END $$;`);
-      await admin.query(`GRANT USAGE ON SCHEMA public TO ${APP_ROLE};`);
-      await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON memory_entries, action_executions, missions, device_sessions TO ${APP_ROLE};`);
-      await admin.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${APP_ROLE};`);
-      record('role', 'PASS', `created least-privilege role "${APP_ROLE}" (non-owner → RLS applies)`);
-    } catch {
-      testRole = 'authenticated';
-      try { await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON memory_entries, action_executions, missions, device_sessions TO ${testRole};`); } catch { /* may already be granted */ }
-      record('role', 'PASS', `CREATE ROLE denied (managed DB) — verifying RLS as existing non-owner role "${testRole}"`);
+    // 5. pick a NON-OWNER role the connecting user can actually SET ROLE to (RLS-bound).
+    //    Self-managed: a created akansha_app (superuser can SET ROLE to it). Managed/Supabase:
+    //    postgres can't SET ROLE to a role it isn't a member of, so fall back to the
+    //    provider's `authenticated` (postgres IS a member of it, and RLS binds to it).
+    let testRole: string | null = null;
+    try { await admin.query(`DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='${APP_ROLE}') THEN CREATE ROLE ${APP_ROLE} NOLOGIN; END IF; END $$;`); } catch { /* managed DB may deny CREATE ROLE */ }
+    for (const cand of [APP_ROLE, 'authenticated', 'anon']) {
+      const probe = await admin.connect();
+      let ok = false;
+      try { await probe.query(`SET ROLE ${cand}`); ok = true; } catch { ok = false; }
+      finally { try { await probe.query('RESET ROLE'); } catch { /* ignore */ } probe.release(); }
+      if (ok) { testRole = cand; break; }
+    }
+    if (testRole) {
+      try {
+        await admin.query(`GRANT USAGE ON SCHEMA public TO ${testRole};`);
+        await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON memory_entries, action_executions, missions, device_sessions TO ${testRole};`);
+        await admin.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${testRole};`);
+        record('role', 'PASS', `RLS verified as non-owner role "${testRole}" (SET ROLE ok)`);
+      } catch (e: any) { record('role', 'FAIL', `grants to ${testRole} failed: ${e?.message || ''}`); }
+    } else {
+      record('role', 'FAIL', 'no SET-ROLE-able non-owner role available to verify isolation');
     }
 
     // 6 + 7: write/read-back + RLS isolation, run under SET ROLE <testRole> (never the owner)
+    if (!testRole) {
+      record('write_readback', 'BLOCKED', 'no test role');
+      record('rls_read_isolation', 'BLOCKED', 'no test role');
+      record('rls_write_isolation', 'BLOCKED', 'no test role');
+    } else {
     const UA = 'akansha-verify-user-A';
     const UB = 'akansha-verify-user-B';
     const stamp = Date.now();
@@ -139,11 +158,12 @@ async function main() {
       await admin.query(`DELETE FROM memory_entries WHERE memory_id LIKE 'ver-mem-%'`).catch(() => {});
       await admin.query(`DELETE FROM action_executions WHERE request_id LIKE 'ver-act-%'`).catch(() => {});
     }
+    }
 
     // 8. backup/restore — real pg_dump if the client binary is available; else honest BLOCKED
     try {
       execFileSync('pg_dump', ['--version'], { stdio: 'pipe', timeout: 10000 });
-      const dumpFile = path.join(os.tmpdir(), `akansha_verify_dump_${stamp}.sql`);
+      const dumpFile = path.join(os.tmpdir(), `akansha_verify_dump_${Date.now()}.sql`);
       execFileSync('pg_dump', ['-d', ADMIN_URL, '-f', dumpFile], { stdio: 'pipe', timeout: 180000 });
       const sz = fs.statSync(dumpFile).size;
       const hasTable = /action_executions/.test(fs.readFileSync(dumpFile, 'utf8'));

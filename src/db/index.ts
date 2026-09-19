@@ -24,7 +24,11 @@ function createRealDb(): Db {
   // Lazy requires — only executed when a database is configured.
   const { Pool } = require("pg");
   const { drizzle } = require("drizzle-orm/node-postgres");
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const url = process.env.DATABASE_URL || "";
+  const ssl = /sslmode=require/i.test(url)
+    ? { require: true, rejectUnauthorized: process.env.AKANSHA_DB_SSL_VERIFY !== "0" }
+    : undefined;
+  const pool = new Pool({ connectionString: url, ssl });
   return drizzle(pool);
 }
 
