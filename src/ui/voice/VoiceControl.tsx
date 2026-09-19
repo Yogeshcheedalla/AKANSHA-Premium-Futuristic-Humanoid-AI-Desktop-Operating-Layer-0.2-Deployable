@@ -110,24 +110,30 @@ export function VoiceControl() {
   const Icon = state === 'ERROR' ? AlertTriangle : state === 'SPEAKING' ? Volume2 : active ? Mic : state === 'MUTED' ? MicOff : Mic;
   const busy = state === 'PROCESSING';
 
-  // Truthful, NON-clickable status indicator (voice is activated via keyboard now).
+  // A REAL button: click toggles the voice session (keyboard still works too —
+  // Ctrl+Space can be swallowed by the Windows input-language bar, so the
+  // button is the reliable primary control). State shown is always the real
+  // engine state; errors say what failed instead of pretending.
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      title="Voice: Ctrl+Space toggle · Ctrl+Shift+Space push-to-talk · Esc stop"
-      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs tracking-wide ${
+    <button
+      type="button"
+      onClick={() => { void toggle(); }}
+      aria-label={active ? 'Stop voice command' : 'Start voice command'}
+      title={state === 'ERROR'
+        ? 'Voice failed — microphone permission or speech recognition unavailable. You can still type below.'
+        : 'Click to start/stop voice · Ctrl+Space toggle · Ctrl+Shift+Space push-to-talk · Esc stop'}
+      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs tracking-wide transition-colors ${
         state === 'ERROR'
-          ? 'bg-rose-500/10 border-rose-400/30 text-rose-200'
+          ? 'bg-rose-500/10 border-rose-400/30 text-rose-200 hover:bg-rose-500/20'
           : active
-          ? 'bg-emerald-500/10 border-emerald-400/30 text-emerald-200'
-          : 'bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border-cyan-400/20 text-cyan-300/90'
+          ? 'bg-emerald-500/10 border-emerald-400/30 text-emerald-200 hover:bg-emerald-500/20'
+          : 'bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border-cyan-400/20 text-cyan-300/90 hover:from-cyan-500/20 hover:to-purple-500/20'
       }`}
     >
       <span className={`w-2 h-2 rounded-full ${DOT[state]}`} />
       {busy ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
       <span>{LABEL[state]}</span>
       <span className="hidden lg:inline text-white/25 ml-1">Ctrl+Space</span>
-    </div>
+    </button>
   );
 }

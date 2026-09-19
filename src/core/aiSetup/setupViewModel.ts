@@ -14,6 +14,8 @@
 import { detectHardware, execRun, type CommandRunner, type HardwareProfile } from '@/core/runtime/HardwareProbe';
 import { detectRuntimes, runtimeFor } from '@/core/runtime/RuntimeManager';
 import { evaluate, fitForCatalogModel, type FitReport } from '@/core/catalog/CompatibilityEngine';
+import { deriveLifecycle } from '@/core/catalog/modelLifecycle';
+import { readUserCatalog } from '@/core/models/local/userCatalog';
 import { loadCatalogForApp, type CatalogResult } from '@/core/catalog/catalogProvider';
 import { decideAiMode } from '@/core/models/AiMode';
 import { toManifestEntry, type CatalogModel } from '@/core/catalog/ModelCatalog';
@@ -32,9 +34,11 @@ export interface SetupDeps {
   runtime: { available: boolean; name: string; supportsAcceleration: string[]; version?: string };
   usableLocalIds: string[];
   openrouter: { connected: boolean; verified: boolean; configured?: boolean; label?: string | null };
+  /** Ids originating from the user trust store (explicit approval path). */
+  userTrustedIds?: string[];
 }
 
-function card(model: CatalogModel, deps: SetupDeps): ModelCardVM {
+function card(model: CatalogModel, deps: SetupDeps, userTrusted = false): ModelCardVM {
   const rt = deps.runtime;
   const compat = evaluate(model, deps.hardware, {
     available: rt.available, name: rt.name, supportsAcceleration: rt.supportsAcceleration,
@@ -45,7 +49,8 @@ function card(model: CatalogModel, deps: SetupDeps): ModelCardVM {
   const entry: ManifestModelEntry = toManifestEntry(model);
   // Install gating is UNCHANGED: runnable + runtime + not-yet-usable. A FIT
   // verdict never opens a gate; READY still only follows real inference.
-  const installable = compat.runnable && rt.available && !deps.usableLocalIds.includes(model.id);
+  const usable = deps.usableLocalIds.includes(model.id);
+  const installable = compat.runnable && rt.available && !usable;
   return {
     id: model.id, name: `${model.family} ${model.version} ${model.parameters}`.trim(),
     family: model.family, version: model.version, quantization: model.quantization, format: model.format,
@@ -57,6 +62,11 @@ function card(model: CatalogModel, deps: SetupDeps): ModelCardVM {
     bestFor: model.bestFor, drawbacks: model.drawbacks, internetRequired: model.internetRequired,
     compatibility: { score: compat.score, rating: compat.rating, runnable: compat.runnable, reasons: compat.reasons },
     fit,
+    lifecycle: deriveLifecycle({
+      verdict: fit.verdict, format: model.format, inSignedCatalog: true, metadataVerified: true,
+      runtimeAvailable: rt.available, usable,
+    }),
+    userTrusted,
     sha256Present: /^[a-f0-9]{64}$/i.test(entry.sha256 || ''), signed: !!model.signature, installable,
   };
 }
@@ -102,7 +112,7 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
       // UNSUPPORTED), then by the EXISTING compatibility score. Scores are
       // not altered — this is ordering metadata, not a second brain.
       models: deps.catalog.models
-        .map((m) => card(m, deps))
+        .map((m) => card(m, deps, deps.userTrustedIds?.includes(m.id) ?? false))
         .sort((a, b) => VERDICT_ORDER[a.fit.verdict] - VERDICT_ORDER[b.fit.verdict] || b.compatibility.score - a.compatibility.score),
     },
     aiMode: { recommended: mode.mode, offlineReady, reason: mode.reason },
@@ -121,8 +131,15 @@ export function getSetupViewModel(cs: ConnectedServices = defaultConnected, env 
   // usableLocalIds: models that genuinely passed integrity AND a real inference
   // self-test (LocalModelRegistry). Empty until that actually happens — never faked.
   const usableLocalIds = getUsableLocalIds();
+  // Merge the user trust store (explicitly approved repos, source-pinned
+  // checksums) into the model list; signed entries stay authoritative on their own.
+  const userModels = readUserCatalog();
+  const mergedCatalog: CatalogResult = userModels.length
+    ? { ...catalog, status: catalog.status === 'not-configured' ? 'ready' : catalog.status, models: [...catalog.models, ...userModels] }
+    : catalog;
   return buildSetupViewModel({
-    hardware, catalog,
+    hardware, catalog: mergedCatalog,
+    userTrustedIds: userModels.map((m) => m.id),
     runtime: { available: rt.available, name: rt.name, supportsAcceleration: rt.supportsAcceleration, version: rt.version },
     usableLocalIds,
     openrouter: { connected: !!orList?.connected, verified: !!orList?.verified, configured: isOAuthConfigured(env), label: orList?.label ?? null },

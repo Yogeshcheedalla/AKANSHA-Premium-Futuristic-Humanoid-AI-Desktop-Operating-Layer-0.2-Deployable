@@ -146,6 +146,30 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
     try { await fetch(`/api/ai/install/execute/${encodeURIComponent(j.jobId)}/cancel`, { method: 'POST', credentials: 'same-origin' }); } catch { /* poll will settle */ }
   };
 
+  const [trusting, setTrusting] = useState<string | null>(null);
+  /** Explicit user approval: pin the repo's REAL LFS checksum locally, then install. */
+  const trustAndInstall = async (repoId: string) => {
+    setTrusting(repoId); setError(null);
+    try {
+      const res = await fetch('/api/models/trust', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repo: repoId }), credentials: 'same-origin' });
+      const d = await res.json();
+      if (!d.ok) { setError(d.error || 'Trust failed — the source exposed no verifiable checksum'); return; }
+      await load();
+      doInstall(d.modelId);
+    } catch (e: any) {
+      setError('Trust request failed: ' + (e?.message || e));
+    } finally { setTrusting(null); }
+  };
+
+  const removeModel = async (modelId: string) => {
+    try {
+      const res = await fetch(`/api/ai/models/${encodeURIComponent(modelId)}`, { method: 'DELETE', credentials: 'same-origin' });
+      const d = await res.json();
+      if (!d.ok) setError(d.error || 'Remove failed');
+      await load();
+    } catch (e: any) { setError('Remove failed: ' + (e?.message || e)); }
+  };
+
   const doSearch = async () => {
     const q = searchQ.trim();
     if (!q) { setSearchCards(null); setSearchErr(null); return; }
@@ -314,7 +338,16 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
                       <div className="text-[10px] text-white/35 mt-1.5">READY only after a real inference test passes.</div>
                     </div>
                   ) : job && job.state === 'READY' ? (
-                    <div className="text-[11px] text-emerald-300">READY — installed and verified by a real inference test{job.benchmark?.genTps ? ` (${job.benchmark.genTps} t/s measured)` : ''}.</div>
+                    <div className="text-[11px] text-emerald-300 flex items-center justify-between gap-2">
+                      <span>READY — verified by real inference{job.benchmark?.genTps ? ` (${job.benchmark.genTps} t/s measured)` : ''}.</span>
+                      <button onClick={() => removeModel(m.id)} className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] border border-white/10 text-white/50 hover:text-rose-300 hover:border-rose-400/30 transition-colors">Remove</button>
+                    </div>
+                  ) : m.lifecycle?.state === 'READY' ? (
+                    <div className="text-[11px] text-emerald-300 flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5"><CheckCircle size={12} /> Installed &amp; verified on this device.</span>
+                      <button onClick={() => removeModel(m.id)} title="Delete the downloaded model files to free storage (reinstall anytime)"
+                        className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] border border-white/10 text-white/50 hover:text-rose-300 hover:border-rose-400/30 transition-colors">Remove</button>
+                    </div>
                   ) : job && (job.state === 'FAILED' || job.state === 'CANCELLED') ? (
                     <>
                       <div className={`text-[11px] mt-1 ${job.state === 'CANCELLED' ? 'text-white/45' : 'text-amber-300'}`}>
@@ -396,9 +429,16 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
                     <Download size={13} /> {c.action === 'retry' ? 'Retry install' : 'Install'}
                   </button>
                 )}
-                {c.action === 'use-model' && (
+                {c.state === 'TRUST_REQUIRED' && (
+                  <button onClick={() => trustAndInstall(c.id)} disabled={trusting === c.id}
+                    title="Pins this file's real HuggingFace LFS SHA-256 as your approval, then installs with full integrity + inference verification"
+                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-amber-400/25 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 disabled:opacity-40 transition-colors">
+                    {trusting === c.id ? <><Loader2 size={13} className="animate-spin" /> Pinning checksum…</> : <><CheckCircle size={13} /> Trust &amp; install</>}
+                  </button>
+                )}
+                {c.state === 'READY' && (
                   <span className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs border border-emerald-400/25 bg-emerald-400/5 text-emerald-300">
-                    <CheckCircle size={13} /> Installed &amp; verified — usable now
+                    <CheckCircle size={13} /> Installed &amp; verified
                   </span>
                 )}
                 <a href={c.repoUrl} target="_blank" rel="noopener noreferrer"

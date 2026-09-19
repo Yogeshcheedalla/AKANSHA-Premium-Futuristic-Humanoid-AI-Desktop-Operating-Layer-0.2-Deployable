@@ -26,6 +26,10 @@ export interface ModelCardVM {
     unknownRungs: string[];
     rungs: { id: string; status: 'PASS' | 'FAIL' | 'UNKNOWN'; basis: string; evidence: string }[];
   };
+  /** The ONE honest lifecycle state + action for this card (shared contract). */
+  lifecycle: import('@/core/catalog/modelLifecycle').LifecycleView;
+  /** True for user-trusted entries (explicit approval + source-pinned checksum). */
+  userTrusted?: boolean;
   sha256Present: boolean; signed: boolean; installable: boolean;
 }
 

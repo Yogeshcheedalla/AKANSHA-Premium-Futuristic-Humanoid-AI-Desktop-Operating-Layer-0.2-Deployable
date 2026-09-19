@@ -11,6 +11,7 @@ import { initialPipelineState, planNext } from '@/core/catalog/ModelManager';
 import { provisionAndVerify } from '@/core/models/local/LocalModelRegistry';
 import { downloadArtifactToFile } from '@/core/models/local/downloadArtifact';
 import { createInstallJob, updateInstallJob, getInstallJob, listInstallJobs, activeJobFor } from '@/core/catalog/installJobs';
+import { readUserCatalog } from '@/core/models/local/userCatalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,8 @@ export async function POST(request: Request) {
     if (catalog.status !== 'ready') {
       return NextResponse.json({ ok: false, stage: 'idle', blocked: `MODEL CATALOG ${catalog.status.toUpperCase()}`, usable: false, reasons: catalog.reasons });
     }
-    const model: CatalogModel | undefined = catalog.models.find((m) => m.id === modelId);
+    const model: CatalogModel | undefined = catalog.models.find((m) => m.id === modelId)
+      || readUserCatalog().find((m) => m.id === modelId); // explicit user-trusted entries
     if (!model) return NextResponse.json({ ok: false, blocked: 'model-not-in-catalog', usable: false }, { status: 404 });
     const entry = toManifestEntry(model);
 

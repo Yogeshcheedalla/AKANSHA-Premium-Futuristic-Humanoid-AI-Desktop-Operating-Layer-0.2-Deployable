@@ -7,6 +7,7 @@ import { loadCatalogForApp } from '@/core/catalog/catalogProvider';
 import { getUsableLocalModelIds } from '@/core/models/local/LocalModelRegistry';
 import { activeJobFor } from '@/core/catalog/installJobs';
 import { deriveLifecycle, type LifecycleView } from '@/core/catalog/modelLifecycle';
+import { readUserCatalog } from '@/core/models/local/userCatalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,8 +40,9 @@ export async function GET(request: Request) {
     const results = await discoverAndRank(q, hardware, rt.available, { limit: 12, enrich: 6 });
     const catalog = loadCatalogForApp(process.env);
     // Catalog entries pin a specific FILE inside a repo; discovery rows are
-    // REPOS. Match them so a signed repo can show an honest INSTALL action.
-    const catalogRepos = catalogRepoMap(catalog.models || []);
+    // REPOS. Match them so a signed OR user-trusted repo can show an honest
+    // INSTALL action (user entries carry a source-pinned LFS SHA-256).
+    const catalogRepos = catalogRepoMap([...(catalog.models || []), ...readUserCatalog()]);
     const usable = new Set(getUsableLocalModelIds());
     const rows = results.map((r) => {
       const catalogModelId = catalogRepos.get(r.id.toLowerCase());

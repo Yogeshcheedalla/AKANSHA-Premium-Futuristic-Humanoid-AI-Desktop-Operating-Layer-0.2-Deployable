@@ -290,12 +290,35 @@ export class AudioEngine {
   }
 }
 
-function pickFemaleVoice(): SpeechSynthesisVoice | null {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-  const voices = window.speechSynthesis.getVoices();
-  const female = voices.find((v) => /(female|woman|zira|samantha|google uk english female|aria|jenny)/i.test(v.name));
+/**
+ * TTS voice selection — FEMALE by user preference.
+ * Chromium/Electron load the voice list ASYNCHRONOUSLY: getVoices() is empty
+ * on first call, so a naive lookup silently falls back to the OS default
+ * (Windows: male "David"). We cache the list from voiceschanged and pick from
+ * the cache at speak time; the preference order is explicit female voices,
+ * then any en-* voice, then anything.
+ */
+let cachedVoices: SpeechSynthesisVoice[] = [];
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  const load = () => { try { cachedVoices = window.speechSynthesis.getVoices() || []; } catch { /* keep */ } };
+  load();
+  try { window.speechSynthesis.addEventListener('voiceschanged', load); } catch { /* older impls lack events */ }
+}
+
+const FEMALE_RANK = /(microsoft aria|zira|sonia|neerja|jenny|samantha|victoria|karen|moira|tessa|fiona|google uk english female|google us female|female)/i;
+
+/** Pure selection order (exported for tests): female-en → female-any → en → first. */
+export function chooseFemaleVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  if (!voices.length) return null;
+  const femaleEn = voices.find((v) => FEMALE_RANK.test(v.name) && /^en[-_]/i.test(v.lang));
+  const femaleAny = voices.find((v) => FEMALE_RANK.test(v.name));
   const en = voices.find((v) => /^en[-_]/i.test(v.lang));
-  return female || en || voices[0] || null;
+  return femaleEn || femaleAny || en || voices[0] || null;
+}
+
+function pickFemaleVoice(): SpeechSynthesisVoice | null {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+  return chooseFemaleVoice(cachedVoices.length ? cachedVoices : (window.speechSynthesis.getVoices() || []));
 }
 
 // Singleton — the ONE voice authority for the whole UI.
