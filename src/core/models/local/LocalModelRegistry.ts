@@ -72,10 +72,13 @@ export function registerUsable(entry: ManifestModelEntry, artifactPath: string, 
 }
 
 /**
- * End-to-end provisioning of one model into the registry. It downloads (injectable
- * fetcher), verifies integrity against the signed manifest entry, then runs a REAL
- * inference self-test. usable is set ONLY on a genuine non-empty generation. On any
- * integrity/inference failure it un-registers and reports the true failure.
+ * End-to-end provisioning of one model into the registry. It obtains the artifact
+ * (already-on-disk or injectable download), verifies integrity against the signed
+ * manifest entry, then runs a REAL inference self-test. usable is set ONLY on a
+ * genuine non-empty generation. On any integrity/inference failure it un-registers
+ * and reports the true failure. Cooperative CANCELLATION: the signal is checked
+ * before every stage and handed to the inference subprocess — a cancelled job can
+ * NEVER reach registerUsable (race-proof: the final gate re-checks after inference).
  */
 export async function provisionAndVerify(opts: {
   entry: ManifestModelEntry;
@@ -85,8 +88,12 @@ export async function provisionAndVerify(opts: {
   fetchDownload?: (url: string) => Promise<Uint8Array>;
   maxTokens?: number;
   timeoutMs?: number;
-}): Promise<{ ok: boolean; usable: boolean; stage: string; reason?: string; benchmark?: UsableLocalModel['benchmark'] }> {
-  const { entry, artifactPath, runtime, prompt } = opts;
+  signal?: AbortSignal;
+  onStage?: (stage: 'integrity' | 'inference') => void;
+}): Promise<{ ok: boolean; usable: boolean; stage: string; cancelled?: boolean; reason?: string; benchmark?: UsableLocalModel['benchmark'] }> {
+  const { entry, artifactPath, runtime, prompt, signal } = opts;
+  const cancelRes = () => ({ ok: false, usable: false, stage: 'cancelled', cancelled: true, reason: 'cancelled' });
+  if (signal?.aborted) return cancelRes();
 
   // 1) obtain bytes (download or already-on-disk)
   let bytes: Uint8Array;
@@ -95,13 +102,18 @@ export async function provisionAndVerify(opts: {
     else if (opts.fetchDownload) bytes = await opts.fetchDownload(entry.url);
     else return { ok: false, usable: false, stage: 'download', reason: 'no artifact and no downloader provided' };
   } catch (e: any) { return { ok: false, usable: false, stage: 'download', reason: 'fetch-failed:' + (e?.message || e) }; }
+  if (signal?.aborted) return cancelRes();
 
   // 2) integrity: SHA-256 + GGUF container against the signed manifest entry
+  opts.onStage?.('integrity');
   const art = verifyArtifact(entry, bytes);
   if (!art.ok) { unregister(entry.id); return { ok: false, usable: false, stage: 'integrity', reason: art.reasons.join(', ') }; }
+  if (signal?.aborted) return cancelRes();
 
-  // 3) REAL inference self-test through the detected runtime
-  const infer = await runLocalInference(runtime, artifactPath, prompt, { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs });
+  // 3) REAL inference self-test through the detected runtime (abort kills the process)
+  opts.onStage?.('inference');
+  const infer = await runLocalInference(runtime, artifactPath, prompt, { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs, ...(signal ? { signal } : {}) });
+  if (infer.cancelled || signal?.aborted) return cancelRes();
   if (!infer.ok || !infer.text.trim()) { unregister(entry.id); return { ok: false, usable: false, stage: 'inference', reason: infer.reason || 'no output' }; }
 
   // 4) usable ONLY now; record the measured benchmark (prompt/gen t/s are measured)

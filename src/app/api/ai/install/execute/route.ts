@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorize } from '@/core/auth/guard';
-import { existsSync } from 'node:fs';
+import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { detectHardwareLive } from '@/core/runtime/HardwareProbe';
 import { detectRuntimes } from '@/core/runtime/RuntimeManager';
@@ -8,11 +8,11 @@ import { loadCatalogForApp } from '@/core/catalog/catalogProvider';
 import { toManifestEntry, type CatalogModel } from '@/core/catalog/ModelCatalog';
 import { evaluate } from '@/core/catalog/CompatibilityEngine';
 import { initialPipelineState, planNext } from '@/core/catalog/ModelManager';
-import { provisionAndVerify, type UsableLocalModel } from '@/core/models/local/LocalModelRegistry';
+import { provisionAndVerify } from '@/core/models/local/LocalModelRegistry';
 import { downloadArtifactToFile } from '@/core/models/local/downloadArtifact';
+import { createInstallJob, updateInstallJob, getInstallJob, listInstallJobs, activeJobFor } from '@/core/catalog/installJobs';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // desktop backend only; long by nature (real download + real inference)
 
 /** Where the app keeps artifacts: the app-controlled home, never read-only resources. */
 export function modelsRoot(env: NodeJS.ProcessEnv = process.env): string {
@@ -21,13 +21,13 @@ export function modelsRoot(env: NodeJS.ProcessEnv = process.env): string {
 
 /**
  * POST /api/ai/install/execute { modelId }
- * THE execution leg of the EXISTING install pipeline. The planner route
- * (/api/ai/install) decides what is next; this route runs that same next step
- * for real — through the same gates (compatibility/storage/runtime) and the
- * same LocalModelRegistry.provisionAndVerify chain (integrity → GGUF → real
- * llama.cpp inference → measured benchmark → register). It can ONLY report
- * stage 'ready'/usable after a genuine non-empty generation, and it never
- * marks READY on download alone. Desktop path: nothing here runs on Vercel.
+ * Starts a REAL install JOB through the EXISTING gates (compatibility/storage/
+ * runtime via planNext) and the EXISTING provisionAndVerify chain (download →
+ * SHA-256+GGUF integrity → real llama.cpp inference → measured benchmark →
+ * register). Returns 202 + jobId immediately; progress and truth live in the
+ * job (GET the same path; cancel via /api/ai/install/execute/[jobId]/cancel).
+ * A cancelled job can NEVER become READY; partial downloads are deleted, never
+ * left behind to masquerade as the artifact.
  */
 export async function POST(request: Request) {
   const guard = authorize(request, 'sensitive');
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const modelId = String(body?.modelId || '');
     const catalog = loadCatalogForApp(process.env);
     if (catalog.status !== 'ready') {
-      return NextResponse.json({ ok: false, stage: 'idle', blocked: `MODEL CATALOG ${catalog.status.toUpperCase()}`, reasons: catalog.reasons });
+      return NextResponse.json({ ok: false, stage: 'idle', blocked: `MODEL CATALOG ${catalog.status.toUpperCase()}`, usable: false, reasons: catalog.reasons });
     }
     const model: CatalogModel | undefined = catalog.models.find((m) => m.id === modelId);
     if (!model) return NextResponse.json({ ok: false, blocked: 'model-not-in-catalog', usable: false }, { status: 404 });
@@ -56,36 +56,63 @@ export async function POST(request: Request) {
     }
 
     const artifactPath = join(modelsRoot(), entry.id, entry.file);
-    let downloaded = false;
-    if (!existsSync(artifactPath)) {
-      const dl = await downloadArtifactToFile(entry.url, artifactPath, entry.sizeBytes);
-      if (!dl.ok) return NextResponse.json({ ok: false, stage: 'download', blocked: 'download-failed:' + dl.reason, usable: false });
-      downloaded = true;
-    }
+    const active = activeJobFor(model.id);
+    if (active) return NextResponse.json({ ok: true, accepted: true, jobId: active.jobId, state: active.state, alreadyRunning: true });
 
-    const result = await provisionAndVerify({
-      entry,
-      artifactPath,
-      runtime: llama!.detect,
-      prompt: 'Reply with exactly: AKANSHA OFFLINE ORCHESTRATION READY',
-      maxTokens: 24,
-      timeoutMs: 120000,
-    });
-    return NextResponse.json({
-      ok: result.ok,
-      usable: result.usable,
-      stage: result.stage,
-      blocked: result.ok ? null : result.reason,
-      downloaded,
-      artifactPath,
-      benchmark: result.benchmark ? { genTps: result.benchmark.genTps, promptTps: result.benchmark.promptTps, totalMs: result.benchmark.totalMs, text: (result.benchmark.text || '').slice(0, 120) } : null,
-      // Honest ceiling: 'ready' here still means ONLY what provisionAndVerify
-      // proved — integrity + one real generation. It is not a promise of
-      // quality beyond that measured evidence.
-    });
+    const job = createInstallJob(model.id, entry.sizeBytes || null);
+
+    // Run the real pipeline as a background job; the job carries honest state.
+    void (async () => {
+      try {
+        if (!existsSync(artifactPath)) {
+          const dl = await downloadArtifactToFile(entry.url, artifactPath, entry.sizeBytes, {
+            signal: job.abort.signal,
+            onProgress: (bytes) => updateInstallJob(job.jobId, { bytesDownloaded: bytes }),
+          });
+          if (dl.cancelled) { updateInstallJob(job.jobId, { state: 'CANCELLED', stage: 'cancelled', endedAt: Date.now() }); return; }
+          if (!dl.ok) { updateInstallJob(job.jobId, { state: 'FAILED', stage: 'download', error: dl.reason, endedAt: Date.now() }); return; }
+        }
+        const result = await provisionAndVerify({
+          entry,
+          artifactPath,
+          runtime: llama!.detect,
+          prompt: 'Reply with exactly: AKANSHA OFFLINE ORCHESTRATION READY',
+          maxTokens: 24,
+          timeoutMs: 120000,
+          signal: job.abort.signal,
+          onStage: (s) => updateInstallJob(job.jobId, { state: s === 'integrity' ? 'VERIFYING' : 'INFERENCE_TESTING', stage: s }),
+        });
+        if (result.cancelled) {
+          updateInstallJob(job.jobId, { state: 'CANCELLED', stage: 'cancelled', endedAt: Date.now() });
+          try { if (existsSync(artifactPath + '.part')) unlinkSync(artifactPath + '.part'); } catch { /* best effort */ }
+          return;
+        }
+        if (!result.ok) { updateInstallJob(job.jobId, { state: 'FAILED', stage: result.stage, error: result.reason, endedAt: Date.now() }); return; }
+        updateInstallJob(job.jobId, {
+          state: 'READY', stage: 'ready', endedAt: Date.now(),
+          benchmark: result.benchmark ? { genTps: result.benchmark.genTps, promptTps: result.benchmark.promptTps, totalMs: result.benchmark.totalMs } : null,
+        });
+      } catch (e: any) {
+        updateInstallJob(job.jobId, { state: 'FAILED', stage: 'internal', error: String(e?.message || e), endedAt: Date.now() });
+      }
+    })();
+
+    return NextResponse.json({ ok: true, accepted: true, jobId: job.jobId, state: job.state }, { status: 202 });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'execute failed', usable: false }, { status: 500 });
   }
 }
 
-export type { UsableLocalModel };
+/** GET /api/ai/install/execute[?jobId=|&modelId=] — job status for honest UI state. */
+export async function GET(request: Request) {
+  const guard = authorize(request, 'authenticated');
+  if (!guard.ok) return guard.response;
+  const params = new URL(request.url).searchParams;
+  const jobId = params.get('jobId');
+  const modelId = params.get('modelId');
+  if (jobId) {
+    const j = getInstallJob(jobId);
+    return NextResponse.json({ ok: !!j, job: j || null, active: j ? null : activeJobFor(modelId || '') });
+  }
+  return NextResponse.json({ ok: true, jobs: listInstallJobs(modelId || undefined) });
+}

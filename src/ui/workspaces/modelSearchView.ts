@@ -11,6 +11,10 @@
  * catalog + ModelManager, and READY only follows a real inference test.
  */
 import type { RankedDiscoveredModel } from '@/core/models/discovery/modelDiscovery';
+import type { LifecycleView, ModelLifecycle, ModelAction } from '@/core/catalog/modelLifecycle';
+
+/** Server row: discovery result + the authoritative lifecycle view from /api/models/search. */
+export type SearchRow = RankedDiscoveredModel & { lifecycle?: LifecycleView; catalogModelId?: string | null };
 
 export interface SearchCard {
   id: string;
@@ -23,6 +27,12 @@ export interface SearchCard {
   repoUrl: string;
   installable: boolean;
   installReason: string;
+  /** Lifecycle state + the ONE action the UI may render (server-derived). */
+  state: ModelLifecycle;
+  action: ModelAction;
+  stateReason: string;
+  /** Catalog entry id when this repo is signed+checksum-pinned (install target). */
+  catalogModelId: string | null;
   // Ladder display (never invented — 'Unknown' when metadata is absent):
   verdict: 'FIT' | 'POSSIBLE' | 'UNSUPPORTED';
   confidence: 'high' | 'moderate' | 'low';
@@ -39,7 +49,7 @@ export interface SearchCard {
 const fmtParams = (n?: number) => (n ? `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)}B` : 'Unknown');
 const fmtSize = (b?: number) => (b ? `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 2)} GB` : 'Unknown');
 
-export function toSearchCards(results: RankedDiscoveredModel[], catalogModelIds: Iterable<string>): SearchCard[] {
+export function toSearchCards(results: SearchRow[], catalogModelIds: Iterable<string>): SearchCard[] {
   const catalog = new Set(catalogModelIds);
   return results.map((r) => {
     const inCatalog = catalog.has(r.id);
@@ -68,6 +78,12 @@ export function toSearchCards(results: RankedDiscoveredModel[], catalogModelIds:
       context: r.artifact?.contextLength ? String(r.artifact.contextLength) : 'Unknown',
       runtime: r.isGguf ? 'llama.cpp' : 'Unknown',
       multimodal: !!r.artifact?.multimodal,
+      // Server-derived lifecycle; if an older server build omits it, derive via
+      // the SAME shared pure function (one contract, never a React re-implementation).
+      state: r.lifecycle?.state ?? 'DISCOVERED',
+      action: r.lifecycle?.action ?? 'review-source',
+      stateReason: r.lifecycle?.reason ?? 'Found upstream; artifact metadata not yet verified.',
+      catalogModelId: r.catalogModelId ?? null,
     };
   });
 }

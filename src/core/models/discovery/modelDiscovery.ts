@@ -64,7 +64,12 @@ const defaultFetcher: JsonFetcher = async (url) => {
   return { ok: r.ok, status: r.status, json: () => r.json() };
 };
 
-/** Search Hugging Face Hub (public, no API key). Returns [] on any failure (offline-safe). */
+/**
+ * Search Hugging Face Hub (public, no API key). Returns [] on any failure (offline-safe).
+ * GGUF-FIRST: a tags=gguf pass runs first so results that can actually participate
+ * in Akansha's install pipeline lead; a general pass tops the list up. Unsupported
+ * results are NOT hidden — the lifecycle state explains why each one can't install.
+ */
 export async function searchModels(
   query: string,
   opts: { fetcher?: JsonFetcher; limit?: number } = {},
@@ -73,33 +78,47 @@ export async function searchModels(
   if (!q) return [];
   const limit = Math.max(1, Math.min(opts.limit ?? 12, 50));
   const fetcher = opts.fetcher ?? defaultFetcher;
-  const url = `https://huggingface.co/api/models?search=${encodeURIComponent(q)}&sort=downloads&direction=-1&limit=${limit}`;
-  let res;
-  try { res = await fetcher(url); } catch { return []; }
-  if (!res || !res.ok) return [];
-  let arr: unknown;
-  try { arr = await res.json(); } catch { return []; }
-  if (!Array.isArray(arr)) return [];
-  return (arr as any[])
-    .map((m): DiscoveredModel | null => {
-      const id = String(m.modelId || m.id || '');
-      if (!id) return null;
-      const tags: string[] = Array.isArray(m.tags) ? m.tags.map(String) : [];
-      const isGguf = tags.some((t) => /gguf/i.test(t)) || /gguf/i.test(id);
-      const licenseTag = tags.find((t) => t.startsWith('license:'));
-      return {
-        id,
-        author: id.split('/')[0] || String(m.author || ''),
-        downloads: Number(m.downloads || 0),
-        likes: Number(m.likes || 0),
-        tags,
-        isGguf,
-        license: m.license || (licenseTag ? licenseTag.replace('license:', '') : undefined),
-        repoUrl: `https://huggingface.co/${id}`,
-        source: 'huggingface',
-      };
-    })
-    .filter((x): x is DiscoveredModel => !!x);
+  const base = `https://huggingface.co/api/models?search=${encodeURIComponent(q)}&sort=downloads&direction=-1&limit=${limit}`;
+  const rows: DiscoveredModel[] = [];
+  const seen = new Set<string>();
+  const collect = async (url: string) => {
+    let res;
+    try { res = await fetcher(url); } catch { return; }
+    if (!res || !res.ok) return;
+    let arr: unknown;
+    try { arr = await res.json(); } catch { return; }
+    if (!Array.isArray(arr)) return;
+    for (const m of arr as any[]) {
+      const norm = normalizeRow(m);
+      if (norm && !seen.has(norm.id)) { seen.add(norm.id); rows.push(norm); }
+    }
+  };
+  // GGUF-first: the tags=gguf QUERY PARAM is silently ignored by the search
+  // endpoint (verified live), so the GGUF pass is keyword-based. Results are
+  // filtered to real GGUF-tagged repos; the general pass tops up the list.
+  await collect(`https://huggingface.co/api/models?search=${encodeURIComponent(q + ' gguf')}&sort=downloads&direction=-1&limit=${limit}`);
+  const ggufRows = rows.filter((r) => r.isGguf);
+  if (ggufRows.length < limit) await collect(base);
+  return [...ggufRows, ...rows.filter((r) => !r.isGguf)].slice(0, limit);
+}
+
+function normalizeRow(m: any): DiscoveredModel | null {
+  const id = String(m.modelId || m.id || '');
+  if (!id) return null;
+  const tags: string[] = Array.isArray(m.tags) ? m.tags.map(String) : [];
+  const isGguf = tags.some((t) => /gguf/i.test(t)) || /\.gguf$/i.test(id);
+  const licenseTag = tags.find((t) => t.startsWith('license:'));
+  return {
+    id,
+    author: id.split('/')[0] || String(m.author || ''),
+    downloads: Number(m.downloads || 0),
+    likes: Number(m.likes || 0),
+    tags,
+    isGguf,
+    license: m.license || (licenseTag ? licenseTag.replace('license:', '') : undefined),
+    repoUrl: `https://huggingface.co/${id}`,
+    source: 'huggingface',
+  };
 }
 
 /**

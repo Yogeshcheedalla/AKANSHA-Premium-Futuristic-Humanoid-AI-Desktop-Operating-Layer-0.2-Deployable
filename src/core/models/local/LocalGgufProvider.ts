@@ -69,8 +69,8 @@ export function defaultLlamaCandidates(): string[] {
  * pure gating below is unit-tested offline. Returns ok ONLY for non-empty text.
  */
 export function runLocalInference(
-  runtime: LocalRuntime, modelPath: string, prompt: string, opts: { maxTokens?: number; timeoutMs?: number } = {}
-): Promise<{ ok: boolean; text: string; genTps?: number | null; promptTps?: number | null; totalMs: number; reason?: string }> {
+  runtime: LocalRuntime, modelPath: string, prompt: string, opts: { maxTokens?: number; timeoutMs?: number; signal?: AbortSignal } = {}
+): Promise<{ ok: boolean; text: string; genTps?: number | null; promptTps?: number | null; totalMs: number; reason?: string; cancelled?: boolean }> {
   return new Promise((resolve) => {
     if (!runtime.exists || !runtime.binaryPath) return resolve({ ok: false, text: '', totalMs: 0, reason: 'runtime-missing' });
     const t0 = Date.now();
@@ -80,8 +80,11 @@ export function runLocalInference(
     try { child = spawn(runtime.binaryPath, args, { windowsHide: true }); }
     catch (e: any) { return resolve({ ok: false, text: '', totalMs: 0, reason: 'spawn-error:' + (e?.message || e) }); }
     let settled = false;
-    const finish = (r: { ok: boolean; text: string; genTps?: number | null; promptTps?: number | null; totalMs: number; reason?: string }) => { if (!settled) { settled = true; clearTimeout(timer); resolve(r); } };
+    const finish = (r: { ok: boolean; text: string; genTps?: number | null; promptTps?: number | null; totalMs: number; reason?: string; cancelled?: boolean }) => { if (!settled) { settled = true; clearTimeout(timer); opts.signal?.removeEventListener('abort', onAbort); resolve(r); } };
     const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} finish({ ok: false, text: '', totalMs: Date.now() - t0, reason: 'timeout' }); }, opts.timeoutMs ?? 120000);
+    // Real cancellation: kill the actual subprocess, report cancelled (never ok).
+    const onAbort = () => { try { child.kill('SIGKILL'); } catch { /* gone */ } finish({ ok: false, text: '', totalMs: Date.now() - t0, reason: 'cancelled', cancelled: true }); };
+    if (opts.signal) { if (opts.signal.aborted) return onAbort(); opts.signal.addEventListener('abort', onAbort, { once: true }); }
     child.stdout.on('data', (b: Buffer) => { out += b.toString('utf8'); });
     child.stderr.on('data', (b: Buffer) => { out += b.toString('utf8'); });
     child.on('error', (e: any) => finish({ ok: false, text: '', totalMs: Date.now() - t0, reason: 'err:' + (e?.message || e) }));

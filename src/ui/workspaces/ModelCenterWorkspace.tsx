@@ -1,7 +1,7 @@
 "use client";
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Cpu, HardDrive, MemoryStick, Monitor, Boxes, Loader2, CheckCircle, AlertTriangle, XCircle, Download, Globe, WifiOff } from 'lucide-react';
+import { Cpu, HardDrive, MemoryStick, Monitor, Boxes, Loader2, CheckCircle, AlertTriangle, XCircle, Download, Globe, WifiOff, RefreshCw } from 'lucide-react';
 import type { SetupViewModel, ModelCardVM, InstallResult } from '@/core/aiSetup/types';
 import { toSearchCards, type SearchCard } from './modelSearchView';
 import { resolveCardState } from '@/core/catalog/installState';
@@ -29,12 +29,26 @@ function FitChip({ fit }: { fit: ModelCardVM['fit'] }) {
   return <span title={tip} className={`shrink-0 inline-flex items-center text-[10px] px-2 py-0.5 rounded-full border ${v.cls}`}>{v.label}</span>;
 }
 
+/** Real install-job view state (jobId from /api/ai/install/execute, polled). */
+interface JobView { jobId: string; state: string; stage: string; pct: number | null; error?: string; benchmark?: { genTps?: number | null; promptTps?: number | null } | null }
+
+/** Honest stage labels for an active install job (no fake progress words). */
+function stageLabel(j: JobView): string {
+  if (j.state === 'CANCELLING') return 'Cancelling — stopping download/process…';
+  if (j.state === 'VERIFYING') return 'Verifying SHA-256 + GGUF integrity';
+  if (j.state === 'INFERENCE_TESTING') return 'Running the real inference test';
+  if (j.stage === 'starting') return 'Starting…';
+  return `Downloading model${typeof j.pct === 'number' ? ` ${j.pct}%` : ''}`;
+}
+
 export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
   const [vm, setVm] = useState<SetupViewModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<string | null>(null);
   const [install, setInstall] = useState<Record<string, InstallResult | 'busy'>>({});
+  const [jobs, setJobs] = useState<Record<string, JobView>>({});
+  const pollers = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const [connecting, setConnecting] = useState(false);
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [searchQ, setSearchQ] = useState('');
@@ -78,25 +92,58 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
     } catch { /* ignore; status reloaded below */ }
   };
 
+  const stopPolling = (id: string) => { const t = pollers.current[id]; if (t) { clearInterval(t); delete pollers.current[id]; } };
+  useEffect(() => () => { Object.values(pollers.current).forEach(clearInterval); }, []);
+
+  const pollJob = useCallback((modelId: string, jobId: string) => {
+    stopPolling(modelId);
+    pollers.current[modelId] = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/ai/install/execute?jobId=${encodeURIComponent(jobId)}`, { credentials: 'same-origin' });
+        const d = await r.json();
+        const j = d.job; if (!j) return;
+        const pct = typeof j.totalBytes === 'number' && j.totalBytes > 0 && typeof j.bytesDownloaded === 'number'
+          ? Math.min(99, Math.round((j.bytesDownloaded / j.totalBytes) * 100)) : null;
+        setJobs((s) => ({ ...s, [modelId]: { jobId, state: j.state, stage: j.stage, pct, error: j.error, benchmark: j.benchmark } }));
+        if (j.state === 'READY' || j.state === 'CANCELLED' || j.state === 'FAILED') {
+          stopPolling(modelId);
+          if (j.state === 'READY') void load(); // refresh usable/READY from the registry
+        }
+      } catch { /* transient poll failure — next tick retries */ }
+    }, 1200);
+  }, [load]);
+
   const doInstall = async (id: string) => {
     setInstall((s) => ({ ...s, [id]: 'busy' }));
+    setJobs((s) => ({ ...s, [id]: { jobId: '', state: 'INSTALLING', stage: 'starting', pct: null } }));
     try {
       // 1) The EXISTING planner decides the next stage and gates (never bypassed).
-      const res = await fetch('/api/ai/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modelId: id }), credentials: 'same-origin' });
+      const res = await fetch('/api/ai/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ modelId: id }), credentials: 'same-origin' });
       const plan: InstallResult = await res.json();
-      // 2) If the plan says download-provision, run that step for real through
-      //    the SAME pipeline (integrity → real inference → measured benchmark →
-      //    register). READY only ever follows genuine output; stages stream in.
+      // 2) If the plan says download-provision, start the REAL job (same
+      //    pipeline: download → integrity → real inference → benchmark → register)
+      //    and follow its honest state — with a working Cancel.
       if (plan.ok && plan.action === 'download-model') {
-        const exec = await fetch('/api/ai/install/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modelId: id }), credentials: 'same-origin' });
+        const exec = await fetch('/api/ai/install/execute', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ modelId: id }), credentials: 'same-origin' });
         const d = await exec.json();
-        setInstall((s) => ({ ...s, [id]: { ...d, stage: d.usable ? 'ready' : d.stage, blocked: d.ok ? null : (d.blocked || d.error) } }));
+        setInstall((s) => { const n = { ...s }; delete n[id]; return n; }); // job state takes over the display
+        if (d.ok && d.jobId) pollJob(id, d.jobId);
+        else setJobs((s) => ({ ...s, [id]: { jobId: '', state: 'FAILED', stage: d.stage || 'start', pct: null, error: d.blocked || d.error } }));
         return;
       }
+      setJobs((s) => { const n = { ...s }; delete n[id]; return n; });
       setInstall((s) => ({ ...s, [id]: plan }));
     } catch (e: any) {
+      setJobs((s) => { const n = { ...s }; delete n[id]; return n; });
       setInstall((s) => ({ ...s, [id]: { ok: false, usable: false, error: e.message } }));
     }
+  };
+
+  const cancelInstall = async (modelId: string) => {
+    const j = jobs[modelId];
+    if (!j?.jobId) return;
+    setJobs((s) => ({ ...s, [modelId]: { ...s[modelId], state: 'CANCELLING', stage: 'cancelling' } }));
+    try { await fetch(`/api/ai/install/execute/${encodeURIComponent(j.jobId)}/cancel`, { method: 'POST', credentials: 'same-origin' }); } catch { /* poll will settle */ }
   };
 
   const doSearch = async () => {
@@ -181,7 +228,7 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
               : <><Globe size={13} /> {vm.online.connected && vm.online.verified ? 'Reconnect OpenRouter' : 'Continue with OpenRouter'}</>}
           </button>
         ) : (
-          <div className="mt-3 text-[11px] text-amber-300/80">OPENROUTER CONNECTION NOT CONFIGURED — set the public URL / callback (no client_id needed) to enable one-click sign-in/sign-up via OpenRouter.</div>
+          <div className="mt-3 text-[11px] text-amber-300/80">OPENROUTER CONNECTION NOT CONFIGURED — the one-click sign-in needs a public callback URL (set AKANSHA_PUBLIC_URL on the hosted app). On this desktop: add OpenRouter under <span className="text-white/60">AI Providers → Add Provider → OpenRouter</span> with an API key — it works without any callback and is verified with a real provider request.</div>
         )}
         {connectMsg && <div className="mt-2 text-[11px] text-white/50">{connectMsg}</div>}
         {vm.online.configured && <div className="mt-1.5 text-[10px] text-white/25">You sign in or create your account securely on OpenRouter — Akansha never sees your OpenRouter password.</div>}
@@ -204,6 +251,7 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
           {vm.catalog.models.map((m) => {
             const rs = rating(m);
             const inst = install[m.id];
+            const job = jobs[m.id];
             const cardState = resolveCardState({
               runnable: m.compatibility.runnable, runtimeAvailable: vm.runtime.available,
               installable: m.installable, result: inst && inst !== 'busy' ? inst : undefined,
@@ -248,20 +296,53 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 {!m.compatibility.runnable && <div className="text-[11px] text-amber-300/80 mt-2">{m.compatibility.reasons.join(', ') || 'Not compatible with this device'}</div>}
                 <div className="mt-3">
-                  <button
-                    disabled={!m.installable || inst === 'busy'}
-                    onClick={() => doInstall(m.id)}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cyan-500/20 transition-colors"
-                  >
-                    {inst === 'busy' ? <><Loader2 size={13} className="animate-spin" /> Installing…</> : <><Download size={13} /> Install</>}
-                  </button>
-                  {inst && inst !== 'busy' && (
-                    <div className={`text-[11px] mt-2 ${inst.ok ? 'text-emerald-300' : 'text-amber-300'}`}>
-                      {inst.ok
-                        ? `Stage: ${inst.stage}${inst.runtimeAvailable ? '' : ' · runtime required'}`
-                        : `Blocked: ${inst.blocked || inst.error || 'not ready'}`}
-                      {' '}<span className="text-white/30">READY only after a real inference test.</span>
+                  {job && (job.state === 'INSTALLING' || job.state === 'VERIFYING' || job.state === 'INFERENCE_TESTING' || job.state === 'CANCELLING') ? (
+                    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-cyan-100 flex items-center gap-2 min-w-0">
+                          <Loader2 size={13} className="animate-spin shrink-0" />
+                          <span className="truncate">{m.name} · {stageLabel(job)}</span>
+                        </div>
+                        <button onClick={() => cancelInstall(m.id)} disabled={job.state === 'CANCELLING' || !job.jobId}
+                          className="shrink-0 px-3 py-1 rounded-lg text-[11px] border border-rose-400/30 text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 transition-colors">
+                          {job.state === 'CANCELLING' ? 'Cancelling…' : 'Cancel'}
+                        </button>
+                      </div>
+                      {typeof job.pct === 'number' && (
+                        <div className="mt-2 h-1 rounded bg-white/10 overflow-hidden"><div className="h-full bg-cyan-400/60" style={{ width: `${job.pct}%` }} /></div>
+                      )}
+                      <div className="text-[10px] text-white/35 mt-1.5">READY only after a real inference test passes.</div>
                     </div>
+                  ) : job && job.state === 'READY' ? (
+                    <div className="text-[11px] text-emerald-300">READY — installed and verified by a real inference test{job.benchmark?.genTps ? ` (${job.benchmark.genTps} t/s measured)` : ''}.</div>
+                  ) : job && (job.state === 'FAILED' || job.state === 'CANCELLED') ? (
+                    <>
+                      <div className={`text-[11px] mt-1 ${job.state === 'CANCELLED' ? 'text-white/45' : 'text-amber-300'}`}>
+                        {job.state === 'CANCELLED' ? 'Installation cancelled — partial files cleaned.' : `Failed (${job.stage}): ${job.error || 'see logs'}`}
+                      </div>
+                      <button onClick={() => doInstall(m.id)}
+                        className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 transition-colors">
+                        <RefreshCw size={13} /> Retry install
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        disabled={!m.installable || inst === 'busy'}
+                        onClick={() => doInstall(m.id)}
+                        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cyan-500/20 transition-colors"
+                      >
+                        {inst === 'busy' ? <><Loader2 size={13} className="animate-spin" /> Starting…</> : <><Download size={13} /> Install</>}
+                      </button>
+                      {inst && inst !== 'busy' && (
+                        <div className={`text-[11px] mt-2 ${inst.ok ? 'text-emerald-300' : 'text-amber-300'}`}>
+                          {inst.ok
+                            ? `Stage: ${inst.stage}${inst.runtimeAvailable ? '' : ' · runtime required'}`
+                            : `Blocked: ${inst.blocked || inst.error || 'not ready'}`}
+                          {' '}<span className="text-white/30">READY only after a real inference test.</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </GlassSurface>
@@ -306,18 +387,34 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
                 <div>Context <span className="text-white/70">{c.context}</span></div>
                 <div>Runtime <span className="text-white/70">{c.runtime}</span></div>
               </div>
-              <div className="text-[11px] text-white/45 mt-2">{c.installReason}</div>
+              <div className="text-[11px] text-white/45 mt-2">{c.stateReason}</div>
               <div className="flex items-center gap-2 mt-3">
-                <button disabled={!c.installable} onClick={() => doInstall(c.id)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cyan-500/20 transition-colors">
-                  <Download size={13} /> Install
-                </button>
+                {/* ONE truthful action per lifecycle state — no dead Install buttons on rows that cannot install. */}
+                {(c.action === 'install' || c.action === 'retry') && (
+                  <button onClick={() => doInstall(c.catalogModelId || c.id)}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 transition-colors">
+                    <Download size={13} /> {c.action === 'retry' ? 'Retry install' : 'Install'}
+                  </button>
+                )}
+                {c.action === 'use-model' && (
+                  <span className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs border border-emerald-400/25 bg-emerald-400/5 text-emerald-300">
+                    <CheckCircle size={13} /> Installed &amp; verified — usable now
+                  </span>
+                )}
                 <a href={c.repoUrl} target="_blank" rel="noopener noreferrer"
                   className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs border border-white/10 text-white/60 hover:text-white/80 hover:border-white/20 transition-colors">
-                  <Globe size={13} /> Source
+                  <Globe size={13} /> {c.action === 'install' || c.action === 'use-model' ? 'Source' : 'Review source'}
                 </a>
               </div>
               {install[c.id] && install[c.id] !== 'busy' && <div className="text-[11px] mt-2 text-white/40">READY only after a real inference test.</div>}
+              {jobs[c.catalogModelId || c.id] && (
+                <div className="text-[11px] mt-2 text-cyan-200/90 flex items-center gap-2">
+                  <Loader2 size={11} className="animate-spin" /> {stageLabel(jobs[c.catalogModelId || c.id])}
+                  {jobs[c.catalogModelId || c.id].jobId && (
+                    <button onClick={() => cancelInstall(c.catalogModelId || c.id)} className="ml-auto text-[10px] text-rose-300 hover:text-rose-200">Cancel</button>
+                  )}
+                </div>
+              )}
             </GlassSurface>
           ))}
         </div>

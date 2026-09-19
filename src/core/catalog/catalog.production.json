@@ -2,9 +2,7 @@
   "catalog": {
     "schema": "akansha/model-catalog/1",
     "version": 1,
-    "issuedAt": 1789552344649,
-    "environment": "production",
-    "fixture": false,
+    "issuedAt": 1789850474753,
     "models": [
       {
         "id": "qwen2.5-1.5b-instruct-q4_k_m",
@@ -56,8 +54,277 @@
         "sourceUrl": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
         "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
         "signature": "UV3lOisi9hUjhqVBu+hDrTTXJfpmlh3rIbC4t7GQL4oYiJir17IDl/Tni2GSyg+NfKkojBdvZboFkxKE+Ht8Bw=="
+      },
+      {
+        "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "family": "qwen",
+        "version": "2.5-Coder",
+        "parameters": "1.5B",
+        "format": "gguf",
+        "downloadSizeBytes": 1117320768,
+        "installedSizeBytes": 1117320768,
+        "minimumRamGB": 4,
+        "recommendedRamGB": 5,
+        "minimumStorageGB": 4,
+        "accelerationSupport": [
+          "cpu"
+        ],
+        "platforms": [
+          "win32",
+          "darwin",
+          "linux"
+        ],
+        "architecture": [
+          "x64",
+          "arm64"
+        ],
+        "runtimeRequirement": "llama.cpp",
+        "contextLength": 32768,
+        "capabilities": [
+          "coding",
+          "chat"
+        ],
+        "quality": {
+          "chat": "Medium",
+          "reasoning": "Medium",
+          "coding": "Good"
+        },
+        "bestFor": "Lightweight local coding assistance",
+        "drawbacks": "Small model — complex reasoning is limited",
+        "internetRequired": false,
+        "benchmark": {
+          "source": "estimated"
+        },
+        "license": "apache-2.0",
+        "sourceUrl": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "sha256": "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+        "signature": "CdJmSoiMSkRLLfapyOMojwL2mmr9S8G300AOWTwFooFUbXERI4nd/AjWQM2L46tE7jY1nkTBkdxEZnsVFEOFAA=="
+      },
+      {
+        "id": "llama-3.2-1b-instruct-q4_k_m",
+        "family": "llama",
+        "version": "3.2",
+        "parameters": "1.2B",
+        "format": "gguf",
+        "downloadSizeBytes": 807694464,
+        "installedSizeBytes": 807694464,
+        "minimumRamGB": 3,
+        "recommendedRamGB": 5,
+        "minimumStorageGB": 3,
+        "accelerationSupport": [
+          "cpu"
+        ],
+        "platforms": [
+          "win32",
+          "darwin",
+          "linux"
+        ],
+        "architecture": [
+          "x64",
+          "arm64"
+        ],
+        "runtimeRequirement": "llama.cpp",
+        "contextLength": 131072,
+        "capabilities": [
+          "chat"
+        ],
+        "quality": {
+          "chat": "Medium",
+          "reasoning": "Medium",
+          "coding": "Medium"
+        },
+        "bestFor": "Very fast general chat on low-end hardware",
+        "drawbacks": "Smallest Llama — shallow reasoning",
+        "internetRequired": false,
+        "benchmark": {
+          "source": "estimated"
+        },
+        "license": "llama3.2",
+        "sourceUrl": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        "sha256": "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83",
+        "signature": "v6jI5/3IZ2MNSaHRktnyHEI4WOUycAPBIL9tnWKALbq0E65kSjyNdWm1EL7UZquny4LrMVor4lU6AHQ+wIHzCg=="
+      },
+      {
+        "id": "llama-3.2-3b-instruct-q4_k_m",
+        "family": "llama",
+        "version": "3.2",
+        "parameters": "3.2B",
+        "format": "gguf",
+        "downloadSizeBytes": 2019377696,
+        "installedSizeBytes": 2019377696,
+        "minimumRamGB": 5,
+        "recommendedRamGB": 6,
+        "minimumStorageGB": 5,
+        "accelerationSupport": [
+          "cpu"
+        ],
+        "platforms": [
+          "win32",
+          "darwin",
+          "linux"
+        ],
+        "architecture": [
+          "x64",
+          "arm64"
+        ],
+        "runtimeRequirement": "llama.cpp",
+        "contextLength": 131072,
+        "capabilities": [
+          "chat",
+          "reasoning"
+        ],
+        "quality": {
+          "chat": "Good",
+          "reasoning": "Good",
+          "coding": "Medium"
+        },
+        "bestFor": "Balanced chat/reasoning on 16 GB machines",
+        "drawbacks": "Noticeably slower than 1B on CPU",
+        "internetRequired": false,
+        "benchmark": {
+          "source": "estimated"
+        },
+        "license": "llama3.2",
+        "sourceUrl": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        "sha256": "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
+        "signature": "asglhx+9VIbzca6CHwUULK/bI+oX+tOw43Pd6AR41xAF5AI0y885agOkbalczYQNfiT98YHYA4uY0FAo9RODCA=="
+      },
+      {
+        "id": "gemma-3-1b-it-q4_k_m",
+        "family": "gemma",
+        "version": "3",
+        "parameters": "1B",
+        "format": "gguf",
+        "downloadSizeBytes": 806058240,
+        "installedSizeBytes": 806058240,
+        "minimumRamGB": 3,
+        "recommendedRamGB": 5,
+        "minimumStorageGB": 3,
+        "accelerationSupport": [
+          "cpu"
+        ],
+        "platforms": [
+          "win32",
+          "darwin",
+          "linux"
+        ],
+        "architecture": [
+          "x64",
+          "arm64"
+        ],
+        "runtimeRequirement": "llama.cpp",
+        "contextLength": 32768,
+        "capabilities": [
+          "chat"
+        ],
+        "quality": {
+          "chat": "Medium",
+          "reasoning": "Medium",
+          "coding": "Medium"
+        },
+        "bestFor": "Tiny multilingual chat",
+        "drawbacks": "Small context-friendly model, limited depth",
+        "internetRequired": false,
+        "benchmark": {
+          "source": "estimated"
+        },
+        "license": "gemma",
+        "sourceUrl": "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
+        "sha256": "8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135",
+        "signature": "lzfg2MpZF+udvzCnkhJi6UAa54I/qWG11cn2Op3C/+hpEO1DiV3V3YVlHxM7gRU+2UeGJL5TyZivF67HtpgIDQ=="
+      },
+      {
+        "id": "qwen3-4b-q4_k_m",
+        "family": "qwen",
+        "version": "3",
+        "parameters": "4B",
+        "format": "gguf",
+        "downloadSizeBytes": 2497280256,
+        "installedSizeBytes": 2497280256,
+        "minimumRamGB": 5,
+        "recommendedRamGB": 7,
+        "minimumStorageGB": 5,
+        "accelerationSupport": [
+          "cpu"
+        ],
+        "platforms": [
+          "win32",
+          "darwin",
+          "linux"
+        ],
+        "architecture": [
+          "x64",
+          "arm64"
+        ],
+        "runtimeRequirement": "llama.cpp",
+        "contextLength": 40960,
+        "capabilities": [
+          "chat",
+          "reasoning"
+        ],
+        "quality": {
+          "chat": "Good",
+          "reasoning": "Good",
+          "coding": "Medium"
+        },
+        "bestFor": "Strong reasoning for its size (thinking mode)",
+        "drawbacks": "~2.5 GB download; slower on pure CPU",
+        "internetRequired": false,
+        "benchmark": {
+          "source": "estimated"
+        },
+        "license": "apache-2.0",
+        "sourceUrl": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+        "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+        "signature": "uaowHpKQqmBOqTbh/qIM1cnKOCLu/XbSB4VgDF2L01v8on0abwpUlxQZo1UEvVcdIbzBxtXqgo2I0S9zY3S7Aw=="
+      },
+      {
+        "id": "llama-3.1-8b-instruct-q4_k_m",
+        "family": "llama",
+        "version": "3.1",
+        "parameters": "8B",
+        "format": "gguf",
+        "downloadSizeBytes": 4920739232,
+        "installedSizeBytes": 4920739232,
+        "minimumRamGB": 7,
+        "recommendedRamGB": 10,
+        "minimumStorageGB": 7,
+        "accelerationSupport": [
+          "cpu"
+        ],
+        "platforms": [
+          "win32",
+          "darwin",
+          "linux"
+        ],
+        "architecture": [
+          "x64",
+          "arm64"
+        ],
+        "runtimeRequirement": "llama.cpp",
+        "contextLength": 131072,
+        "capabilities": [
+          "chat",
+          "reasoning",
+          "coding"
+        ],
+        "quality": {
+          "chat": "Good",
+          "reasoning": "Good",
+          "coding": "Good"
+        },
+        "bestFor": "Best quality that still fits 16 GB RAM (CPU)",
+        "drawbacks": "~4.9 GB download; token speed is modest on CPU",
+        "internetRequired": false,
+        "benchmark": {
+          "source": "estimated"
+        },
+        "license": "llama3.1",
+        "sourceUrl": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        "sha256": "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c",
+        "signature": "JlfU+9/stI3G+SIDhDDESde5eBeZF/beInzZR0qwvY2KnmOuzrtFiKxzplg2JFR8laSGTE+TXCMxxr83PdduDg=="
       }
     ]
   },
-  "signatureBase64": "OL51Uz69nsMIkxd0DlkrSScqaOTOUgG4K9SGhbEMULK6YeRx7zuH/IyOLU+V9lA1LdMQ6kkQdIt8FbAELDRmCg=="
+  "signatureBase64": "3eJJPM3ObsSSWfY6gyqcB3+DHTKscAEj0EpCJv4As5Hk2MGZnOgpTxZwZAtHratYyJN0g5REcY7TvoEzMcg3DQ=="
 }

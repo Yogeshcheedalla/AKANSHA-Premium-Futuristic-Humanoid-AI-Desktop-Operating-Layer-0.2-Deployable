@@ -18,6 +18,7 @@ interface Provider {
 }
 
 const TYPE_OPTIONS = [
+  { value: 'openrouter', label: 'OpenRouter', hint: 'https://openrouter.ai/api/v1 — paste an API key from openrouter.ai/keys' },
   { value: 'ollama', label: 'Ollama (Local)', hint: 'http://127.0.0.1:11434' },
   { value: 'openai', label: 'OpenAI', hint: 'https://api.openai.com/v1' },
   { value: 'gemini', label: 'Google Gemini', hint: 'generativelanguage.googleapis.com' },
