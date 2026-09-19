@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
-import { Cpu, HardDrive, MemoryStick, Monitor, Boxes, Loader2, CheckCircle, AlertTriangle, XCircle, Download, Globe, WifiOff, RefreshCw } from 'lucide-react';
+import { Cpu, HardDrive, MemoryStick, Monitor, Boxes, Loader2, CheckCircle, AlertTriangle, XCircle, Download, Globe, WifiOff, RefreshCw, Zap } from 'lucide-react';
 import type { SetupViewModel, ModelCardVM, InstallResult } from '@/core/aiSetup/types';
 import { toSearchCards, type SearchCard } from './modelSearchView';
 import { resolveCardState } from '@/core/catalog/installState';
@@ -170,6 +170,31 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
     } catch (e: any) { setError('Remove failed: ' + (e?.message || e)); }
   };
 
+  // Inline OpenRouter connection (API key → Credential Vault → REAL verify).
+  const [orKey, setOrKey] = useState('');
+  const [orBusy, setOrBusy] = useState(false);
+  const [orMsg, setOrMsg] = useState<string | null>(null);
+  const connectOpenRouterKey = async () => {
+    const key = orKey.trim();
+    if (!key) { setOrMsg('Paste your OpenRouter API key first (from openrouter.ai/keys).'); return; }
+    setOrBusy(true); setOrMsg(null);
+    try {
+      const add = await fetch('/api/providers', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ providerId: 'openrouter', name: 'OpenRouter (Cloud)', type: 'openrouter', apiKey: key, defaultModel: 'openrouter/auto' }) });
+      const ad = await add.json();
+      if (!add.ok || ad.ok === false) { setOrMsg(ad.error || `Could not save provider (HTTP ${add.status})`); return; }
+      const test = await fetch('/api/providers/test', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ providerId: 'openrouter' }) });
+      const td = await test.json();
+      const state = td?.health?.state;
+      setOrMsg(state === 'AVAILABLE' ? 'OpenRouter verified with a real request — Online AI is ready.'
+        : state === 'AUTH_REQUIRED' ? 'Saved, but OpenRouter rejected the key (AUTH_REQUIRED). Check the key and test again.'
+        : 'Saved. Live verification result: ' + (state || 'unknown') + (td?.health?.detail ? ` — ${td.health.detail}` : ''));
+      setOrKey('');
+      await load();
+    } catch (e: any) {
+      setOrMsg('Connection failed: ' + (e?.message || e));
+    } finally { setOrBusy(false); }
+  };
+
   const doSearch = async () => {
     const q = searchQ.trim();
     if (!q) { setSearchCards(null); setSearchErr(null); return; }
@@ -252,8 +277,20 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
               : <><Globe size={13} /> {vm.online.connected && vm.online.verified ? 'Reconnect OpenRouter' : 'Continue with OpenRouter'}</>}
           </button>
         ) : (
-          <div className="mt-3 text-[11px] text-amber-300/80">OPENROUTER CONNECTION NOT CONFIGURED — the one-click sign-in needs a public callback URL (set AKANSHA_PUBLIC_URL on the hosted app). On this desktop: add OpenRouter under <span className="text-white/60">AI Providers → Add Provider → OpenRouter</span> with an API key — it works without any callback and is verified with a real provider request.</div>
+          <div className="mt-3 text-[11px] text-amber-300/80">One-click sign-in needs a public callback URL (hosted app). On this desktop, connect instantly with your OpenRouter API key below — stored only in the local credential vault and verified with a real provider request.</div>
         )}
+        {!vm.online.connected && (
+          <div className="mt-3 flex gap-2">
+            <input type="password" value={orKey} onChange={(e) => setOrKey(e.target.value)}
+              placeholder="OpenRouter API key (sk-or-…) — from openrouter.ai/keys"
+              className="flex-1 min-w-0 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2 text-sm text-white/85 placeholder:text-white/25 focus:border-cyan-400/40 outline-none" />
+            <button onClick={connectOpenRouterKey} disabled={orBusy}
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-40 transition-colors">
+              {orBusy ? <><Loader2 size={13} className="animate-spin" /> Verifying…</> : <><Zap size={13} /> Connect</>}
+            </button>
+          </div>
+        )}
+        {orMsg && <div className={`mt-2 text-[11px] ${orMsg.startsWith('OpenRouter verified') ? 'text-emerald-300' : 'text-amber-300'}`}>{orMsg}</div>}
         {connectMsg && <div className="mt-2 text-[11px] text-white/50">{connectMsg}</div>}
         {vm.online.configured && <div className="mt-1.5 text-[10px] text-white/25">You sign in or create your account securely on OpenRouter — Akansha never sees your OpenRouter password.</div>}
       </GlassSurface>

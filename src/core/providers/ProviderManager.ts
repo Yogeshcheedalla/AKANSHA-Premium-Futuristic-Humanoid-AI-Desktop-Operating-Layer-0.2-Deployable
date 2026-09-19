@@ -1,6 +1,8 @@
-import { db } from '@/db';
+import { db, isDbConfigured } from '@/db';
 import { modelProviders, providerModels } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createProvider, type ProviderConfigInput } from '../../integrations/models/ProviderFactory';
 import type { ModelProvider, ModelInfo, HealthStatus, ProviderType } from '../models/ModelProvider';
 import { LocalGgufProvider, detectLlamaRuntime, defaultLlamaCandidates, type LocalModelState } from '../models/local/LocalGgufProvider';
@@ -35,6 +37,27 @@ export class ProviderManager {
   private providers = new Map<string, ModelProvider>();
   private loaded = false;
 
+  /* ── DB-less local fallback (packaged desktop without DATABASE_URL) ─────
+   * Provider ROWS (never secrets — secrets stay as vault refs) persist to a
+   * JSON file under the app home so "connect a provider" works offline too.
+   * With a database configured, this store is never read or written. */
+  private localPath(): string {
+    return process.env.AKANSHA_HOME
+      ? join(process.env.AKANSHA_HOME, 'data', 'providers.json')
+      : join(process.cwd(), 'data', 'akansha', 'data', 'providers.json');
+  }
+  private readLocal(): any[] {
+    try { const j = JSON.parse(readFileSync(this.localPath(), 'utf8')); return Array.isArray(j.rows) ? j.rows : []; } catch { return []; }
+  }
+  private writeLocal(rows: any[]): void {
+    try { mkdirSync(dirname(this.localPath()), { recursive: true }); writeFileSync(this.localPath(), JSON.stringify({ updated: Date.now(), rows }, null, 2), 'utf8'); } catch { /* best effort */ }
+  }
+  private localUpsert(row: any): void {
+    const rows = this.readLocal().filter((r) => r.providerId !== row.providerId);
+    rows.push(row);
+    this.writeLocal(rows);
+  }
+
   /** Built-in definitions used to seed a fresh install. */
   private builtin(): ProviderConfigInput[] {
     return [
@@ -61,39 +84,43 @@ export class ProviderManager {
     this.providers.clear();
 
     let rows: any[] = [];
-    try {
-      rows = await db.select().from(modelProviders);
-    } catch {
-      rows = [];
-    }
-
-    if (rows.length === 0) {
-      // Best-effort seed from built-ins + environment (no-op when persistence
-      // is disabled — the in-memory fallback below still makes providers work).
-      for (const cfg of this.builtin()) {
-        const credentialRef = cfg.apiKey ? credentialVault.put(cfg.apiKey) : undefined;
-        try {
-          await db.insert(modelProviders).values({
-            providerId: cfg.id,
-            name: cfg.name,
-            type: cfg.type,
-            baseUrl: cfg.baseUrl || null,
-            credentialRef: credentialRef || null,
-            enabled: cfg.enabled !== false,
-            isDefault: cfg.id === 'experiential',
-            fallbackPriority: cfg.fallbackPriority ?? 100,
-            capabilities: {},
-            settings: { temperature: 0.7, timeoutMs: 60000 },
-            health: { status: 'UNKNOWN', latencyMs: 0 },
-          });
-        } catch {
-          /* table may not exist yet, or persistence is disabled */
-        }
-      }
+    if (isDbConfigured) {
       try {
         rows = await db.select().from(modelProviders);
       } catch {
         rows = [];
+      }
+    } else {
+      rows = this.readLocal();
+    }
+
+    if (rows.length === 0) {
+      // Seed from built-ins + environment. Database when configured; the local
+      // JSON store otherwise (desktop offline) — both keep providers editable.
+      const seedRows = this.builtin().map((cfg) => ({
+        providerId: cfg.id,
+        name: cfg.name,
+        type: cfg.type,
+        baseUrl: cfg.baseUrl || null,
+        credentialRef: cfg.apiKey ? credentialVault.put(cfg.apiKey) || null : null,
+        defaultModel: cfg.defaultModel || null,
+        enabled: cfg.enabled !== false,
+        isDefault: cfg.id === 'experiential',
+        fallbackPriority: cfg.fallbackPriority ?? 100,
+        capabilities: {},
+        settings: { temperature: 0.7, timeoutMs: 60000 },
+        health: { status: 'UNKNOWN', latencyMs: 0 },
+      }));
+      if (isDbConfigured) {
+        for (const row of seedRows) {
+          try {
+            await db.insert(modelProviders).values(row as any).onConflictDoNothing();
+          } catch { /* table may not exist yet */ }
+        }
+        try { rows = await db.select().from(modelProviders); } catch { rows = []; }
+      } else {
+        this.writeLocal(seedRows);
+        rows = seedRows;
       }
     }
 
@@ -193,31 +220,33 @@ export class ProviderManager {
   async addProvider(input: ProviderConfigInput): Promise<ProviderRecord> {
     const credentialRef = input.apiKey ? credentialVault.put(input.apiKey) : input.credentialRef;
 
-    await db
-      .insert(modelProviders)
-      .values({
-        providerId: input.id,
-        name: input.name,
-        type: input.type,
-        baseUrl: input.baseUrl || null,
-        credentialRef: credentialRef || null,
-        defaultModel: input.defaultModel || null,
-        enabled: input.enabled !== false,
-        isDefault: input.isDefault === true,
-        fallbackPriority: input.fallbackPriority ?? 100,
-        capabilities: {},
-        settings: {
-          temperature: input.temperature ?? 0.7,
-          timeoutMs: input.timeoutMs ?? 60000,
-          contextLimit: input.contextLimit,
-          streaming: input.streaming ?? true,
-          organization: input.organization,
-          project: input.project,
-          headers: input.headers,
-        },
-        health: { status: 'UNKNOWN', latencyMs: 0 },
-      })
-      .onConflictDoNothing();
+    const row = {
+      providerId: input.id,
+      name: input.name,
+      type: input.type,
+      baseUrl: input.baseUrl || null,
+      credentialRef: credentialRef || null,
+      defaultModel: input.defaultModel || null,
+      enabled: input.enabled !== false,
+      isDefault: input.isDefault === true,
+      fallbackPriority: input.fallbackPriority ?? 100,
+      capabilities: {},
+      settings: {
+        temperature: input.temperature ?? 0.7,
+        timeoutMs: input.timeoutMs ?? 60000,
+        contextLimit: input.contextLimit,
+        streaming: input.streaming ?? true,
+        organization: input.organization,
+        project: input.project,
+        headers: input.headers,
+      },
+      health: { status: 'UNKNOWN', latencyMs: 0 },
+    };
+    if (isDbConfigured) {
+      await db.insert(modelProviders).values(row as any).onConflictDoNothing();
+    } else {
+      this.localUpsert(row);
+    }
 
     this.instantiate({ ...input, credentialRef, apiKey: undefined });
     const rec = await this.getRecord(input.id);
@@ -241,15 +270,29 @@ export class ProviderManager {
       };
     }
 
-    await db.update(modelProviders).set(values).where(eq(modelProviders.providerId, providerId));
+    if (isDbConfigured) {
+      await db.update(modelProviders).set(values).where(eq(modelProviders.providerId, providerId));
+    } else {
+      const rows = this.readLocal();
+      const cur = rows.find((r) => r.providerId === providerId);
+      if (cur) {
+        Object.assign(cur, values);
+        delete cur.updatedAt;
+        this.writeLocal(rows);
+      }
+    }
     this.loaded = false;
     await this.load();
     return this.getRecord(providerId);
   }
 
   async removeProvider(providerId: string): Promise<void> {
-    await db.delete(modelProviders).where(eq(modelProviders.providerId, providerId));
-    await db.delete(providerModels).where(eq(providerModels.providerId, providerId));
+    if (isDbConfigured) {
+      await db.delete(modelProviders).where(eq(modelProviders.providerId, providerId));
+      await db.delete(providerModels).where(eq(providerModels.providerId, providerId));
+    } else {
+      this.writeLocal(this.readLocal().filter((r) => r.providerId !== providerId));
+    }
     this.providers.delete(providerId);
   }
 
@@ -283,12 +326,35 @@ export class ProviderManager {
     };
   }
 
+  /** All provider ROWS — database when configured, local store otherwise. */
+  private async allRows(): Promise<any[]> {
+    if (isDbConfigured) {
+      try { return await db.select().from(modelProviders); } catch { return []; }
+    }
+    return this.readLocal();
+  }
+
   async listRecords(): Promise<ProviderRecord[]> {
     await this.load();
+    const rows = await this.allRows();
     const records: ProviderRecord[] = [];
-    for (const p of this.providers.values()) {
-      const rec = await this.getRecord(p.id);
-      if (rec) records.push(rec);
+    for (const row of rows) {
+      const p = this.providers.get(row.providerId);
+      if (p) {
+        const rec = await this.getRecord(row.providerId);
+        if (rec) { records.push(rec); continue; }
+      }
+      // Disabled / not instantiated: still LIST it (built from the row, no
+      // secrets) — otherwise toggling off made the card vanish entirely.
+      records.push({
+        providerId: row.providerId, name: row.name, type: row.type as ProviderType,
+        baseUrl: row.baseUrl || null, defaultModel: row.defaultModel || null,
+        enabled: row.enabled !== false, isDefault: !!row.isDefault,
+        fallbackPriority: row.fallbackPriority ?? 100, policy: 'balanced',
+        capabilities: row.capabilities || {}, settings: row.settings || {},
+        health: row.health || { status: 'UNKNOWN', latencyMs: 0 },
+        credentialConfigured: !!row.credentialRef,
+      });
     }
     return records.sort((a, b) => a.fallbackPriority - b.fallbackPriority);
   }
@@ -306,15 +372,24 @@ export class ProviderManager {
     const health = await p.healthCheck();
     const models = health.state === 'AVAILABLE' || health.state === 'DEGRADED' ? await p.listModels() : [];
 
-    await db
-      .update(modelProviders)
-      .set({
-        health: { status: health.state, latencyMs: health.latencyMs, detail: health.detail, checkedAt: health.checkedAt },
-        updatedAt: new Date(),
-      })
-      .where(eq(modelProviders.providerId, providerId));
+    if (isDbConfigured) {
+      await db
+        .update(modelProviders)
+        .set({
+          health: { status: health.state, latencyMs: health.latencyMs, detail: health.detail, checkedAt: health.checkedAt },
+          updatedAt: new Date(),
+        })
+        .where(eq(modelProviders.providerId, providerId));
+    } else {
+      const rows = this.readLocal();
+      const cur = rows.find((r) => r.providerId === providerId);
+      if (cur) {
+        cur.health = { status: health.state, latencyMs: health.latencyMs, detail: health.detail, checkedAt: health.checkedAt };
+        this.writeLocal(rows);
+      }
+    }
 
-    if (models.length > 0) {
+    if (models.length > 0 && isDbConfigured) {
       await db.delete(providerModels).where(eq(providerModels.providerId, providerId));
       await db.insert(providerModels).values(
         models.map((m) => ({

@@ -120,7 +120,7 @@ export function VoiceControl() {
       onClick={() => { void toggle(); }}
       aria-label={active ? 'Stop voice command' : 'Start voice command'}
       title={state === 'ERROR'
-        ? 'Voice failed — microphone permission or speech recognition unavailable. You can still type below.'
+        ? 'Voice failed: microphone permission denied OR speech recognition is unavailable in the packaged desktop app (it has no system speech service). Use Akansha in Chrome/Edge for voice, or type below. Ctrl+Space can also be captured by the Windows input-language bar (ENG-IN) — the button is the reliable control.'
         : 'Click to start/stop voice · Ctrl+Space toggle · Ctrl+Shift+Space push-to-talk · Esc stop'}
       className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs tracking-wide transition-colors ${
         state === 'ERROR'
