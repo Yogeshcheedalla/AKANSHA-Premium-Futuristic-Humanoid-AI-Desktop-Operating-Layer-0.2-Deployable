@@ -28,6 +28,7 @@ export async function GET(request: Request) {
     status: answer.status,
     query: q,
     count: answer.results.length,
+    servedBy: answer.servedBy,
     results: answer.results,
     citations: retrieve ? answer.citations : [],
     summary: retrieve ? answer.summary : undefined,

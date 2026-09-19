@@ -1,6 +1,16 @@
-# Local services for Akansha (both optional — the app runs without either).
-#   docker compose up -d db        → persistence    (npm run db:push)
-#   docker compose up -d searxng   → web search     (SEARXNG_URL=http://127.0.0.1:8088)
+# ── OPTIONAL DEVELOPMENT INFRASTRUCTURE ─────────────────────────────────────
+# Akansha does NOT require Docker to run, deploy, or serve Web Search. Every
+# capability here has a Docker-free equivalent:
+#   • db       — production uses Supabase via DATABASE_URL (see .env.example).
+#   • searxng  — Web Search only needs a REACHABLE SearXNG endpoint in
+#                SEARXNG_URL; where it runs (this compose, another host,
+#                a remote VM) is irrelevant to the provider.
+# Readiness is ALWAYS decided by a real HTTP health probe of SEARXNG_URL —
+# never by whether Docker exists, runs, or has any particular container.
+#
+# Local development conveniences (both optional):
+#   docker compose up -d db        → local persistence  (npm run db:push)
+#   docker compose up -d searxng   → local search backend (SEARXNG_URL=http://127.0.0.1:8088)
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -20,10 +30,11 @@ services:
       timeout: 5s
       retries: 5
 
-  # Self-hosted SearXNG — Akansha's keyless web-search backend. JSON output is
-  # enabled via ./searxng/settings.yml. The provider only reports healthy after a
-  # REAL search returns REAL results; if this container is down, Web Search
-  # reports UNAVAILABLE and local models keep working (no silent fallback).
+  # Self-hosted SearXNG — one convenient LOCAL way to host the search endpoint.
+  # JSON output is enabled via ./searxng/settings.yml. The provider only
+  # reports READY after a REAL search returns REAL results; if the configured
+  # endpoint (this one or any other host) is unreachable, Web Search reports
+  # UNAVAILABLE and local models keep working (no silent fallback).
   searxng:
     image: searxng/searxng:latest
     container_name: akansha-searxng

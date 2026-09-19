@@ -10,6 +10,7 @@ interface Result {
 interface SearchData {
   ok: boolean; status: 'READY' | 'DEGRADED' | 'UNAVAILABLE'; query: string;
   count: number; results: Result[]; reason?: string; currentInfoEligible?: boolean;
+  servedBy?: string[];
 }
 
 const STATUS: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -125,7 +126,7 @@ export function WebSearchWorkspace() {
       {data && data.results.length > 0 && (
         <div className="space-y-3">
           <div className="text-[11px] uppercase tracking-widest text-white/30">
-            {data.count} sources · untrusted content · rendered as text only
+            {data.count} sources{data.servedBy?.length ? ` · served by ${data.servedBy.join(', ')}` : ''} · untrusted content · rendered as text only
             {data.currentInfoEligible ? <span className="text-cyan-300/60 normal-case"> · routing: this query is web-eligible</span> : null}
           </div>
           {data.results.map((r, i) => (

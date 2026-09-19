@@ -48,6 +48,9 @@ export interface SearchAnswer {
   available: boolean;
   query: string;
   results: SearchResult[];
+  /** Which provider(s) actually served these results (e.g. searxng, duckduckgo).
+   * Keeps "SearXNG status" and "search capability status" visibly distinct. */
+  servedBy: string[];
   citations: CitationRecord[];
   /** Honest extractive summary built ONLY from retrieved content (no model). */
   summary?: string;
@@ -92,7 +95,7 @@ export async function searchAndRetrieve(
   const provider = deps.provider ?? searxngSearch;
   const q = (query || '').trim();
   if (!q) {
-    return { status: 'UNAVAILABLE', available: false, query: q, results: [], citations: [], reason: 'empty query' };
+    return { status: 'UNAVAILABLE', available: false, query: q, results: [], servedBy: [], citations: [], reason: 'empty query' };
   }
 
   // Single existing brain: provider mesh → canonical dedupe → rank.
@@ -132,6 +135,7 @@ export async function searchAndRetrieve(
     available: results.length > 0 || health.status === 'READY',
     query: q,
     results,
+    servedBy: [...new Set(results.map((r) => r.source))],
     citations,
     summary,
     reason: results.length ? undefined : health.reason || 'no results',

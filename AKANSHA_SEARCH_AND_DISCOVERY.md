@@ -16,10 +16,10 @@ Status legend: ✅ done+verified · 🟡 partial · ⛔ designed, blocked on ext
 - ⬜ Model Center **Search tab** UI wiring to `/api/models/search` (next slice; reuses existing Model Center, no rebuild).
 
 ### B. Web Search (real‑time information)
-- ⛔ **SearXNG adapter** — needs a self‑hosted SearXNG instance (Docker) or a public one; the app must not promise unlimited free scraping. Adapter contract designed; live instance not deployed here.
-- ⛔ **Playwright browser fallback** — needs the Playwright browser binaries installed; not present.
-- ⛔ **Fetch → extract → dedupe → rank → cite pipeline** — designed; blocked on the above.
-- ✅ **Principle locked**: current/time‑sensitive queries route to search; never answer from stale model memory; every claim keeps a source. (Intent classification already exists in `IntentEngine`.)
+- ✅ **SearXNG capability — LIVE (2026‑09‑19, commits 53ed929 / 5f7bdd8).** `SearXNGSearchProvider` registered first in the existing `WebCapability` mesh; readiness comes ONLY from a real HTTP health probe of `SEARXNG_URL` returning real results. **Docker is not required anywhere in the product path** — the endpoint may run anywhere reachable (the local `docker-compose.yml` entry is optional dev infrastructure). Verified live end‑to‑end (`scripts/verify-web-search.ts` → `WEB SEARCH READY` against a real instance).
+- ✅ **Fetch → normalize → canonical dedupe → rank → HTTP retrieval → extraction → citation pipeline** — real, with `CitationRecord` retrieval/content status tracking; failed retrievals are never presented as verified.
+- 🟡 **Playwright browser fallback** — code path complete and honestly gated (used only after HTTP failure, only if the package is installed); the optional `playwright` binary is not installed, so the tier currently self-reports UNAVAILABLE. Not faked.
+- ✅ **Principle locked**: current/time‑sensitive queries route to search via the existing `SearchDecision` policy; never answer from stale model memory when live data is required; every claim keeps a source.
 
 ### C. Runtimes (llama.cpp / Transformers / AirLLM)
 - ✅ llama.cpp discovery incl. **packaged** `resourcesPath`/`AKANSHA_PACKAGED_RUNTIME` (bundled into the installer; verified in `win-unpacked`).
@@ -50,8 +50,8 @@ Status legend: ✅ done+verified · 🟡 partial · ⛔ designed, blocked on ext
 - ⬜ Surface `requiresPaidConsent` as an explicit "this needs a paid model — continue / use free‑local" prompt in the Model Center (next UI slice).
 
 ## Immediate next slices (in order)
-1. Model Center **Search tab** → wire `/api/models/search` into the existing Model Center (recommended / search / installed), showing the honest installable/unsupported cards.
-2. **SearXNG** self‑hosted (Docker) + `WebSearchProvider` adapter + fetch/extract/cite, with truthful rate‑limit/CAPTCHA/offline states.
+1. Model Center **Search tab** → wire `/api/models/search` into the existing Model Center (recommended / search / installed), showing the honest installable/unsupported cards. ✅ DONE (b46600e).
+2. **SearXNG** endpoint + `WebSearchProvider` adapter + fetch/extract/cite, with truthful rate‑limit/CAPTCHA/offline states. ✅ DONE (53ed929) — endpoint-driven, **no Docker dependency**.
 3. Discovery **size‑fit** (fetch GGUF file listing → pre‑rank by device RAM/VRAM/disk).
 4. **AirLLM** adapter behind a real compatibility test (desktop only).
 

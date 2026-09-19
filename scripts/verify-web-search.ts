@@ -4,7 +4,8 @@
  * on mocks and exits non-zero unless the whole chain is real:
  * health → real query → real results → dedupe → real retrieval → extraction →
  * citation tracking → untrusted framing.
- *   usage: npx tsx scripts/verify-web-search.ts   (needs `docker compose up -d searxng`)
+ *   usage: npx tsx scripts/verify-web-search.ts   (needs a REACHABLE SearXNG at
+ *   SEARXNG_URL — anywhere; Docker is not required, never invoked, never consulted)
  */
 import path from 'node:path';
 import * as dotenv from 'dotenv';
