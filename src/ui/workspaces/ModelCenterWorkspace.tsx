@@ -17,6 +17,18 @@ const RATING_STYLE: Record<string, { label: string; cls: string; icon: React.Rea
 function gb(bytes: number) { return bytes ? (bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1) + ' GB' : '—'; }
 function rating(m: ModelCardVM) { return RATING_STYLE[m.compatibility.rating] || { label: m.compatibility.rating, cls: 'text-white/50', icon: null }; }
 
+/** Hardware-fit LADDER verdict — an evidence forecast, distinct from READY. */
+const VERDICT_STYLE: Record<string, { label: string; cls: string }> = {
+  FIT: { label: '🟢 FIT', cls: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/25' },
+  POSSIBLE: { label: '🟡 POSSIBLE', cls: 'bg-amber-400/10 text-amber-300 border-amber-400/25' },
+  UNSUPPORTED: { label: '🔴 UNSUPPORTED', cls: 'bg-rose-400/10 text-rose-300 border-rose-400/25' },
+};
+function FitChip({ fit }: { fit: ModelCardVM['fit'] }) {
+  const v = VERDICT_STYLE[fit.verdict] || VERDICT_STYLE.POSSIBLE;
+  const tip = `${v.label} (${fit.confidence} confidence)\n${fit.reasons.slice(0, 8).join('\n')}${fit.unknownRungs.length ? `\nunknown: ${fit.unknownRungs.join(', ')}` : ''}`;
+  return <span title={tip} className={`shrink-0 inline-flex items-center text-[10px] px-2 py-0.5 rounded-full border ${v.cls}`}>{v.label}</span>;
+}
+
 export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
   const [vm, setVm] = useState<SetupViewModel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -193,7 +205,10 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
                     <div className="text-white/90 font-medium">{m.name}</div>
                     <div className="text-[11px] text-white/40 capitalize">{m.family} · {m.version} · {m.quantization || '—'} · {m.format}</div>
                   </div>
-                  <div className={`flex items-center gap-1 text-[11px] font-medium ${rs.cls}`}>{rs.icon}{rs.label}</div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <FitChip fit={m.fit} />
+                    <div className={`flex items-center gap-1 text-[11px] font-medium ${rs.cls}`}>{rs.icon}{rs.label}</div>
+                  </div>
                 </div>
                 <div className="mt-1"><span className="text-[10px] uppercase tracking-wide text-white/40">{cardState}</span></div>
                 <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-[11px] text-white/50 mt-3">
@@ -266,9 +281,20 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-white/90 font-medium truncate">{c.name}</div>
-                  <div className="text-[11px] text-white/40">{c.publisher} · {c.gguf ? 'GGUF' : 'non-GGUF'} · {c.downloads.toLocaleString()} dl · {c.likes} likes{c.license ? ` · ${c.license}` : ''}</div>
+                  <div className="text-[11px] text-white/40">{c.publisher} · {c.gguf ? 'GGUF' : 'non-GGUF'} · {c.downloads.toLocaleString()} dl · {c.likes} likes{c.license ? ` · ${c.license}` : ''}{c.multimodal ? ' · vision' : ''}</div>
                 </div>
-                <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full ${c.classification.installable ? 'bg-emerald-400/10 text-emerald-300' : 'bg-white/5 text-white/40'}`}>{c.classification.installable ? 'Compatible' : 'Check'}</span>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <FitChip fit={{ verdict: c.verdict, confidence: c.confidence, reasons: c.fitReasons, unknownRungs: [], rungs: [] }} />
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${c.installable ? 'bg-emerald-400/10 text-emerald-300' : 'bg-white/5 text-white/40'}`}>{c.installable ? 'In signed catalog' : 'Review source'}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-y-1 gap-x-4 text-[11px] text-white/45 mt-2">
+                <div>Params <span className="text-white/70">{c.parameters}</span></div>
+                <div>Arch <span className="text-white/70">{c.architecture}</span></div>
+                <div>Quant <span className="text-white/70">{c.quantization}</span></div>
+                <div>Size <span className="text-white/70">{c.size}</span></div>
+                <div>Context <span className="text-white/70">{c.context}</span></div>
+                <div>Runtime <span className="text-white/70">{c.runtime}</span></div>
               </div>
               <div className="text-[11px] text-white/45 mt-2">{c.installReason}</div>
               <div className="flex items-center gap-2 mt-3">

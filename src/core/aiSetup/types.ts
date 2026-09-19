@@ -16,6 +16,16 @@ export interface ModelCardVM {
   performanceLabel: 'Measured' | 'Estimated' | 'Unknown'; estimatedTokensPerSec?: number; memoryGB?: number;
   bestFor?: string; drawbacks?: string; internetRequired: boolean;
   compatibility: { score: number; rating: string; runnable: boolean; reasons: string[] };
+  /** Hardware-fit ladder summary (extension of the SAME CompatibilityEngine).
+   * A FORECAST from real device + metadata evidence — never grants READY.
+   * Structural & serializable: this DTO stays types-only for the client bundle. */
+  fit: {
+    verdict: 'FIT' | 'POSSIBLE' | 'UNSUPPORTED';
+    confidence: 'high' | 'moderate' | 'low';
+    reasons: string[];
+    unknownRungs: string[];
+    rungs: { id: string; status: 'PASS' | 'FAIL' | 'UNKNOWN'; basis: string; evidence: string }[];
+  };
   sha256Present: boolean; signed: boolean; installable: boolean;
 }
 

@@ -13,7 +13,7 @@
  */
 import { detectHardware, execRun, type CommandRunner, type HardwareProfile } from '@/core/runtime/HardwareProbe';
 import { detectRuntimes, runtimeFor } from '@/core/runtime/RuntimeManager';
-import { evaluate } from '@/core/catalog/CompatibilityEngine';
+import { evaluate, fitForCatalogModel, type FitReport } from '@/core/catalog/CompatibilityEngine';
 import { loadCatalogForApp, type CatalogResult } from '@/core/catalog/catalogProvider';
 import { decideAiMode } from '@/core/models/AiMode';
 import { toManifestEntry, type CatalogModel } from '@/core/catalog/ModelCatalog';
@@ -39,7 +39,12 @@ function card(model: CatalogModel, deps: SetupDeps): ModelCardVM {
   const compat = evaluate(model, deps.hardware, {
     available: rt.available, name: rt.name, supportsAcceleration: rt.supportsAcceleration,
   });
+  const fit = fitForCatalogModel(model, deps.hardware, {
+    available: rt.available, name: rt.name, supportsAcceleration: rt.supportsAcceleration, version: rt.version,
+  });
   const entry: ManifestModelEntry = toManifestEntry(model);
+  // Install gating is UNCHANGED: runnable + runtime + not-yet-usable. A FIT
+  // verdict never opens a gate; READY still only follows real inference.
   const installable = compat.runnable && rt.available && !deps.usableLocalIds.includes(model.id);
   return {
     id: model.id, name: `${model.family} ${model.version} ${model.parameters}`.trim(),
@@ -51,9 +56,12 @@ function card(model: CatalogModel, deps: SetupDeps): ModelCardVM {
     performanceLabel: compat.performanceLabel, estimatedTokensPerSec: compat.estimatedTokensPerSec, memoryGB: compat.memoryGB,
     bestFor: model.bestFor, drawbacks: model.drawbacks, internetRequired: model.internetRequired,
     compatibility: { score: compat.score, rating: compat.rating, runnable: compat.runnable, reasons: compat.reasons },
+    fit,
     sha256Present: /^[a-f0-9]{64}$/i.test(entry.sha256 || ''), signed: !!model.signature, installable,
   };
 }
+
+const VERDICT_ORDER: Record<FitReport['verdict'], number> = { FIT: 0, POSSIBLE: 1, UNSUPPORTED: 2 };
 
 /** Pure builder — everything below is derived from the injected deps, never invented. */
 export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
@@ -90,7 +98,12 @@ export function buildSetupViewModel(deps: SetupDeps): SetupViewModel {
     catalog: {
       status: deps.catalog.status, reasons: deps.catalog.reasons,
       fixture: deps.catalog.status === 'fixture',
-      models: deps.catalog.models.map((m) => card(m, deps)),
+      // Recommendations now ORDER by fit evidence first (FIT → POSSIBLE →
+      // UNSUPPORTED), then by the EXISTING compatibility score. Scores are
+      // not altered — this is ordering metadata, not a second brain.
+      models: deps.catalog.models
+        .map((m) => card(m, deps))
+        .sort((a, b) => VERDICT_ORDER[a.fit.verdict] - VERDICT_ORDER[b.fit.verdict] || b.compatibility.score - a.compatibility.score),
     },
     aiMode: { recommended: mode.mode, offlineReady, reason: mode.reason },
     online: { provider: 'openrouter', connected: deps.openrouter.connected, verified: deps.openrouter.verified, configured: deps.openrouter.configured ?? true, label: deps.openrouter.label ?? null },

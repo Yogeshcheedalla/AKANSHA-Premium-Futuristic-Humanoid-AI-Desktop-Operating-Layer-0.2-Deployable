@@ -4,8 +4,13 @@
  * pipeline can actually handle (present in the catalog + classified installable).
  * A discovered model that isn't a signed, checksum-pinned catalog entry is shown
  * with its source + reason, never a fake one-click INSTALL.
+ *
+ * The hardware-fit LADDER (FIT / POSSIBLE / UNSUPPORTED with evidence) is shown
+ * alongside installability — but they are DIFFERENT statements: fit is a forecast
+ * from real metadata + the real device; INSTALL remains gated by the signed
+ * catalog + ModelManager, and READY only follows a real inference test.
  */
-import type { RankedDiscoveredModel, DeviceClassification } from '@/core/models/discovery/modelDiscovery';
+import type { RankedDiscoveredModel } from '@/core/models/discovery/modelDiscovery';
 
 export interface SearchCard {
   id: string;
@@ -18,8 +23,21 @@ export interface SearchCard {
   repoUrl: string;
   installable: boolean;
   installReason: string;
-  classification: DeviceClassification;
+  // Ladder display (never invented — 'Unknown' when metadata is absent):
+  verdict: 'FIT' | 'POSSIBLE' | 'UNSUPPORTED';
+  confidence: 'high' | 'moderate' | 'low';
+  fitReasons: string[];
+  parameters: string;      // e.g. '3.2B' or 'Unknown'
+  architecture: string;    // e.g. 'llama' or 'Unknown'
+  quantization: string;    // 'Unknown' unless authoritatively declared
+  size: string;            // e.g. '0.75 GB (smallest GGUF)' or 'Unknown'
+  context: string;         // e.g. '131072' or 'Unknown'
+  runtime: string;         // 'llama.cpp' for GGUF, 'Unknown' otherwise
+  multimodal: boolean;
 }
+
+const fmtParams = (n?: number) => (n ? `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)}B` : 'Unknown');
+const fmtSize = (b?: number) => (b ? `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 2)} GB` : 'Unknown');
 
 export function toSearchCards(results: RankedDiscoveredModel[], catalogModelIds: Iterable<string>): SearchCard[] {
   const catalog = new Set(catalogModelIds);
@@ -40,7 +58,16 @@ export function toSearchCards(results: RankedDiscoveredModel[], catalogModelIds:
       repoUrl: r.repoUrl,
       installable,
       installReason,
-      classification: r.classification,
+      verdict: r.fit.verdict,
+      confidence: r.fit.confidence,
+      fitReasons: r.fit.reasons.slice(0, 6),
+      parameters: fmtParams(r.artifact?.parameters),
+      architecture: r.artifact?.architecture || 'Unknown',
+      quantization: 'Unknown', // HF exposes no authoritative per-file quantization — never name-guessed
+      size: r.artifact?.smallestArtifactBytes ? `${fmtSize(r.artifact.smallestArtifactBytes)} (smallest GGUF)` : 'Unknown',
+      context: r.artifact?.contextLength ? String(r.artifact.contextLength) : 'Unknown',
+      runtime: r.isGguf ? 'llama.cpp' : 'Unknown',
+      multimodal: !!r.artifact?.multimodal,
     };
   });
 }

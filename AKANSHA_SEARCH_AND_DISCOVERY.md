@@ -12,8 +12,8 @@ Status legend: ✅ done+verified · 🟡 partial · ⛔ designed, blocked on ext
 - ✅ Offline/non‑OK → `[]` (never fabricates results).
 - ✅ `GET /api/models/search?q=` (auth‑gated like the rest of the app).
 - ✅ Unit tests (5) + `scripts/verify-model-discovery.ts` (real).
-- 🟡 **Size/RAM/VRAM pre‑fit in discovery** — deferred to the existing install pipeline (search API doesn't return file size); a follow‑up can fetch the GGUF file listing to pre‑rank by fit. Not faked.
-- ⬜ Model Center **Search tab** UI wiring to `/api/models/search` (next slice; reuses existing Model Center, no rebuild).
+- ✅ Size/RAM/VRAM pre‑fit in discovery — **hardware-fit LADDER shipped (2026‑09‑19)**: `fetchArtifactInfo` reads REAL structured HF metadata (gguf.architecture / total params / context_length, sibling file sizes); 16-rung ladder (format → architecture → parameters → quantization → fileSize → RAM → VRAM → storage → CPU → GPU → OS → runtime → dependencies → context → resource pressure → verdict) is an EXTENSION of the same CompatibilityEngine; FIT/POSSIBLE/UNSUPPORTED per rung with measured/declared/estimated/unknown basis. Estimated evidence can never yield FIT; unknowns stay UNKNOWN; quantization is NEVER name-guessed; verdicts never grant install/READY (ModelManager remains the only authority). Verified live on real hardware (`scripts/verify-hardware-fit.ts`).
+- ✅ Model Center **Search tab** UI wiring to `/api/models/search` (reuses existing Model Center, no rebuild).
 
 ### B. Web Search (real‑time information)
 - ✅ **SearXNG capability — LIVE (2026‑09‑19, commits 53ed929 / 5f7bdd8).** `SearXNGSearchProvider` registered first in the existing `WebCapability` mesh; readiness comes ONLY from a real HTTP health probe of `SEARXNG_URL` returning real results. **Docker is not required anywhere in the product path** — the endpoint may run anywhere reachable (the local `docker-compose.yml` entry is optional dev infrastructure). Verified live end‑to‑end (`scripts/verify-web-search.ts` → `WEB SEARCH READY` against a real instance).

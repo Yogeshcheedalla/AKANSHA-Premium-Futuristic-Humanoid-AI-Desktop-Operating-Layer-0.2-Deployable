@@ -111,3 +111,31 @@ test('setup vm: installed+usable local model => OFFLINE AI READY', () => {
   assert.equal(vm.readiness.offline, 'OFFLINE AI READY');
   assert.equal(vm.aiMode.offlineReady, true);
 });
+
+test('§14 recommendations: fit-ordered (FIT before UNSUPPORTED), existing scores untouched', () => {
+  const armOnly = { ...model, id: 'qwen-arm-only', architecture: ['arm64'] };
+  const vm = buildSetupViewModel(baseDeps({
+    catalog: { status: 'ready', models: [armOnly, model], reasons: [] },
+    runtime: { available: true, name: 'llama.cpp', supportsAcceleration: ['cpu'] },
+  }));
+  assert.equal(vm.catalog.models[0].id, 'qwen-1.5b', 'FIT evidence ranks before concrete UNSUPPORTED');
+  assert.equal(vm.catalog.models[0].fit.verdict, 'FIT');
+  assert.equal(vm.catalog.models[1].fit.verdict, 'UNSUPPORTED');
+  assert.ok(vm.catalog.models[1].fit.reasons.some((r) => r.startsWith('cpu:')));
+  // The pre-existing compatibility score/rating fields still drive the card:
+  assert.equal(vm.catalog.models[0].compatibility.runnable, true);
+  assert.equal(vm.catalog.models[1].compatibility.runnable, false);
+  // …and install gating remains runnable-driven — fit alone never opens it:
+  assert.equal(vm.catalog.models[1].installable, false);
+});
+
+test('§16/17 gating invariant: FIT + runtime present but model already usable => installable false', () => {
+  const vm = buildSetupViewModel(baseDeps({
+    runtime: { available: true, name: 'llama.cpp', supportsAcceleration: ['cpu'] },
+    usableLocalIds: ['qwen-1.5b'],
+  }));
+  const card = vm.catalog.models[0];
+  assert.equal(card.fit.verdict, 'FIT');
+  assert.equal(card.installable, false, 'already-usable models are not re-installed by fit');
+  assert.ok(!('ready' in card.fit) && !('usable' in card.fit), 'fit object carries no READY authority');
+});

@@ -11,6 +11,7 @@
  * does it come from."
  */
 import type { HardwareProfile } from '@/core/runtime/HardwareProbe';
+import { buildFitReport, type FitFacts, type FitReport } from '@/core/catalog/CompatibilityEngine';
 
 export interface DiscoveredModel {
   id: string;
@@ -24,6 +25,21 @@ export interface DiscoveredModel {
   source: 'huggingface';
 }
 
+/**
+ * Real GGUF artifact metadata, read ONLY from structured fields of the Hugging
+ * Face details API (gguf.architecture / gguf.total / gguf.context_length and
+ * the per-file sibling sizes). Quantization is intentionally NOT inferred from
+ * file names — an absent value stays undefined (UNKNOWN on the ladder).
+ */
+export interface GgufArtifactInfo {
+  architecture?: string;
+  parameters?: number;         // gguf.total — real parameter count
+  contextLength?: number;      // gguf.context_length
+  smallestArtifactBytes?: number; // smallest real GGUF file in the repo
+  ggufFileCount: number;
+  multimodal: boolean;         // vision/multimodal indicated by structured tags
+}
+
 export interface DeviceClassification {
   installable: boolean;
   formatSupported: boolean;
@@ -33,6 +49,8 @@ export interface DeviceClassification {
 
 export interface RankedDiscoveredModel extends DiscoveredModel {
   classification: DeviceClassification;
+  artifact: GgufArtifactInfo | null;
+  fit: FitReport;
 }
 
 export type JsonFetcher = (url: string) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
@@ -97,17 +115,93 @@ export function classifyForDevice(m: DiscoveredModel, _hardware: HardwareProfile
   return { installable: true, formatSupported, runtimeSupported, reason: 'GGUF + local runtime available — installable (size/fit verified during install)' };
 }
 
+/**
+ * Fetch REAL GGUF artifact metadata for one repo from the HF details API.
+ * Only structured fields are read (gguf.*, sibling sizes, tags) — anything the
+ * API does not state stays undefined. Returns null on ANY failure (offline,
+ * 401/gated, 404, malformed) — the ladder then simply reports those rungs
+ * UNKNOWN. Never throws.
+ */
+export async function fetchArtifactInfo(
+  modelId: string,
+  opts: { fetcher?: JsonFetcher } = {},
+): Promise<GgufArtifactInfo | null> {
+  const fetcher = opts.fetcher ?? defaultFetcher;
+  try {
+    // HF rejects %2F-encoded repo ids (400 "Invalid repo name") — encode each
+    // path segment separately and keep the separator. Verified live.
+    const idPath = (modelId || '').split('/').map(encodeURIComponent).join('/');
+    const res = await fetcher(`https://huggingface.co/api/models/${idPath}?blobs=true`);
+    if (!res || !res.ok) return null;
+    const j: any = await res.json();
+    if (!j || typeof j !== 'object') return null;
+    const gguf = (j.gguf && typeof j.gguf === 'object') ? j.gguf : {};
+    const files: any[] = Array.isArray(j.siblings) ? j.siblings : [];
+    const ggufFiles = files.filter((f) => typeof f?.rfilename === 'string' && /\.gguf$/i.test(f.rfilename));
+    const sizes = ggufFiles.map((f) => Number(f.size)).filter((n) => Number.isFinite(n) && n > 0);
+    const tags: string[] = Array.isArray(j.tags) ? j.tags.map(String) : [];
+    const info: GgufArtifactInfo = {
+      ggufFileCount: ggufFiles.length,
+      multimodal: j.pipeline_tag === 'image-text-to-text' || tags.some((t) => /^(vision|multimodal|image)/i.test(t)),
+    };
+    if (typeof gguf.architecture === 'string' && gguf.architecture) info.architecture = gguf.architecture;
+    if (Number.isFinite(gguf.total) && gguf.total > 0) info.parameters = Math.round(gguf.total);
+    if (Number.isFinite(gguf.context_length) && gguf.context_length > 0) info.contextLength = Math.round(gguf.context_length);
+    if (sizes.length) info.smallestArtifactBytes = Math.min(...sizes);
+    return info;
+  } catch {
+    return null;
+  }
+}
+
+/** Map a discovered model (+ real artifact metadata, if any) onto ladder facts. */
+export function factsForDiscovered(m: DiscoveredModel, art: GgufArtifactInfo | null): FitFacts {
+  return {
+    modelId: m.id,
+    family: m.author,
+    format: m.isGguf ? 'gguf' : 'non-gguf', // confirmed absence of GGUF artifacts is real evidence → FAIL rung
+    architecture: art?.architecture,
+    parameters: art?.parameters,
+    quantization: undefined, // HF exposes no authoritative per-file quantization — stays UNKNOWN
+    fileSizeBytes: art?.smallestArtifactBytes,
+    declaredTrusted: false, // discovery metadata is real but UNSIGNED: basis "measured", never "declared"
+    declared: {
+      // No vendor-declared RAM/VRAM/storage floors exist for discovery — the
+      // ladder falls back to size-based ESTIMATED rungs or UNKNOWN, by design.
+      runtime: m.isGguf ? 'llama.cpp' : undefined,
+      contextLength: art?.contextLength,
+      capabilities: art?.multimodal ? ['vision'] : undefined,
+    },
+  };
+}
+
 /** Discover + classify + rank (installable first, then popularity). */
 export async function discoverAndRank(
   query: string,
   hardware: HardwareProfile,
   runtimeAvailable: boolean,
-  opts: { fetcher?: JsonFetcher; limit?: number } = {},
+  opts: { fetcher?: JsonFetcher; limit?: number; enrich?: number } = {},
 ): Promise<RankedDiscoveredModel[]> {
   const models = await searchModels(query, opts);
-  return models
-    .map((m) => ({ ...m, classification: classifyForDevice(m, hardware, runtimeAvailable) }))
-    .sort((a, b) =>
-      Number(b.classification.installable) - Number(a.classification.installable)
-      || b.downloads - a.downloads);
+  // Enrich the TOP candidates with real artifact metadata (sequential, bounded
+  // — respect the upstream AND the request budget; absence of data only
+  // widens the UNKNOWN rungs, it never blocks the answer).
+  const enrich = Math.max(0, Math.min(opts.enrich ?? 0, models.length));
+  const artifacts: (GgufArtifactInfo | null)[] = models.map(() => null);
+  const deadline = Date.now() + 6000; // keep the route well inside serverless budgets
+  for (let i = 0; i < enrich && Date.now() < deadline; i++) artifacts[i] = await fetchArtifactInfo(models[i].id, opts);
+
+  const runtime = { available: runtimeAvailable, name: 'llama.cpp', supportsAcceleration: runtimeAvailable ? ['cpu'] : [] };
+  const ranked = models.map((m, i) => ({
+    ...m,
+    artifact: artifacts[i],
+    classification: classifyForDevice(m, hardware, runtimeAvailable),
+    fit: buildFitReport(factsForDiscovered(m, artifacts[i]), hardware, runtime),
+  }));
+  return ranked.sort((a, b) =>
+    Number(b.classification.installable) - Number(a.classification.installable)
+    || VERDICT_RANK[a.fit.verdict] - VERDICT_RANK[b.fit.verdict]
+    || b.downloads - a.downloads);
 }
+
+const VERDICT_RANK: Record<FitReport['verdict'], number> = { FIT: 0, POSSIBLE: 1, UNSUPPORTED: 2 };
