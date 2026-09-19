@@ -42,6 +42,13 @@ Status legend: ✅ done+verified · 🟡 partial · ⛔ designed, blocked on ext
 - ✅ Truthful onboarding spine (device→capability→voice→mode→models→install→enter).
 - ✅ Action Fabric + Windows `desktop.app.launch/close/focus` verified; Postgres persistence live.
 
+### H. Routing / cost policy (added)
+- ✅ OpenRouter is already a first‑class provider **type** in `ProviderFactory` (base URL `openrouter.ai/api/v1`, OpenAI‑compatible) — a cloud fabric adapter under the existing ModelRouter, not a second orchestrator.
+- ✅ `src/core/routing/costPolicy.ts` — free‑first ordering **local → free(cloud) → paid(cloud)** + `planCostRoute` with `requiresPaidConsent` (true only when the sole routes are paid → the UI must ask before spending).
+- ✅ Wired into `ModelRouter.rank` as a stable score tiebreaker (cheaper wins ties) — existing scores unchanged, so routing only changes on ties. 5 unit tests; full suite green.
+- ⛔ **OmniRouters** — not a provider I can verify exists; represented honestly as "other OpenAI‑compatible provider" via the existing factory, NOT a fabricated named adapter.
+- ⬜ Surface `requiresPaidConsent` as an explicit "this needs a paid model — continue / use free‑local" prompt in the Model Center (next UI slice).
+
 ## Immediate next slices (in order)
 1. Model Center **Search tab** → wire `/api/models/search` into the existing Model Center (recommended / search / installed), showing the honest installable/unsupported cards.
 2. **SearXNG** self‑hosted (Docker) + `WebSearchProvider` adapter + fetch/extract/cite, with truthful rate‑limit/CAPTCHA/offline states.

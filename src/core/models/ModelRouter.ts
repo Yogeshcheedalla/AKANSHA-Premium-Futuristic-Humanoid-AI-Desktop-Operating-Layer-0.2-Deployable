@@ -9,6 +9,7 @@ import type {
   HealthStatus,
 } from './ModelProvider';
 import { eventBus } from '../events/EventBus';
+import { freeFirstCompare } from '../routing/costPolicy';
 
 export interface RoutingCandidate {
   providerId: string;
@@ -220,9 +221,9 @@ export class ModelRouter {
     }
 
     if (privacySensitive) {
-      candidates.sort((a, b) => b.score - a.score || (a.providerId === 'ollama' ? -1 : 1));
+      candidates.sort((a, b) => b.score - a.score || freeFirstCompare(a, b));
     } else {
-      candidates.sort((a, b) => b.score - a.score);
+      candidates.sort((a, b) => b.score - a.score || freeFirstCompare(a, b));
     }
     return candidates;
   }
