@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { providerManager } from '@/core/providers/ProviderManager';
 import { modelRouter } from '@/core/models/ModelRouter';
 import { authorize } from '@/core/auth/guard';
+import { providerError } from '@/core/providers/providerHttpError';
 import type { ProviderType } from '@/core/models/ModelProvider';
 
 export const dynamic = 'force-dynamic';
@@ -64,6 +65,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, provider: { ...record, modelsDiscovered: 0 } });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message }, { status: 500 });
+    return providerError(e);
   }
 }

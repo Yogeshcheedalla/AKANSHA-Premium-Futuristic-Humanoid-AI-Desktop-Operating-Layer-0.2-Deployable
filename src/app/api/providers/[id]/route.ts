@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { providerManager } from '@/core/providers/ProviderManager';
 import { modelRouter } from '@/core/models/ModelRouter';
 import { authorize } from '@/core/auth/guard';
+import { providerError } from '@/core/providers/providerHttpError';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (!record) return NextResponse.json({ ok: false, error: 'Provider not found' }, { status: 404 });
     return NextResponse.json({ ok: true, provider: record });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message }, { status: 500 });
+    return providerError(e);
   }
 }
 
@@ -30,6 +31,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     modelRouter.getRegistry().clearProvider(id);
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message }, { status: 500 });
+    return providerError(e);
   }
 }
