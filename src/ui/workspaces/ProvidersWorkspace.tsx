@@ -66,13 +66,17 @@ export const ProvidersWorkspace = () => {
 
   const testProvider = async (providerId: string) => {
     setTesting(providerId);
+    setError(null);
     try {
       const res = await fetch('/api/providers/test', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId }),
+        body: JSON.stringify({ providerId }), credentials: 'same-origin',
       });
       const data = await res.json();
-      setTestResult((prev) => ({ ...prev, [providerId]: { health: data.health, models: data.models || [] } }));
+      if (!res.ok || data.ok === false) setError(data.error || `Test failed (HTTP ${res.status})`);
+      else setTestResult((prev) => ({ ...prev, [providerId]: { health: data.health, models: data.models || [] } }));
+    } catch (e: any) {
+      setError('Test request failed: ' + (e?.message || e));
     } finally {
       setTesting(null);
       load();
@@ -82,27 +86,38 @@ export const ProvidersWorkspace = () => {
   const addProvider = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch('/api/providers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(form), credentials: 'same-origin',
       });
       const data = await res.json();
-      if (!data.ok) setError(data.error);
+      if (!data.ok) setError(data.error || `Could not save provider (HTTP ${res.status})`);
       else { setShowAdd(false); setForm({ name: '', type: 'openai-compatible', baseUrl: '', apiKey: '', defaultModel: '', fallbackPriority: 100 }); await load(); }
+    } catch (e: any) {
+      setError('Save request failed: ' + (e?.message || e));
     } finally { setSaving(false); }
   };
 
   const toggleProvider = async (p: Provider) => {
-    await fetch(`/api/providers/${p.providerId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: !p.enabled }),
-    });
+    setError(null);
+    try {
+      const res = await fetch(`/api/providers/${p.providerId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !p.enabled }), credentials: 'same-origin',
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d?.error || `Could not change "${p.name}" (HTTP ${res.status})`); }
+    } catch (e: any) { setError('Toggle request failed: ' + (e?.message || e)); }
     load();
   };
 
   const removeProvider = async (providerId: string) => {
-    await fetch(`/api/providers/${providerId}`, { method: 'DELETE' });
+    setError(null);
+    try {
+      const res = await fetch(`/api/providers/${providerId}`, { method: 'DELETE', credentials: 'same-origin' });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d?.error || `Could not remove the provider (HTTP ${res.status})`); }
+    } catch (e: any) { setError('Delete request failed: ' + (e?.message || e)); }
     load();
   };
 

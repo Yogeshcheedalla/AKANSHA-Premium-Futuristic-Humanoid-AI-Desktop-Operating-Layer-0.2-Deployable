@@ -17,7 +17,6 @@ export const WORKSPACES: WorkspaceMeta[] = [
   { id: 'search', label: 'Web Search' },
   { id: 'cognitive', label: 'Cognitive Layer' },
   { id: 'missions', label: 'Missions' },
-  { id: 'graph', label: 'Architecture Graph' },
   { id: 'repositories', label: 'Repository Fabric' },
   { id: 'agents', label: 'Agents' },
   { id: 'integrations', label: 'Capability Fabric' },

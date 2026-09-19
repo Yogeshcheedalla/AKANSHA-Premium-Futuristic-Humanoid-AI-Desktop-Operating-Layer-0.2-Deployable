@@ -137,8 +137,14 @@ async function startBackend() {
         AKANSHA_PACKAGED_RUNTIME: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'llama') : '',
         // Local desktop identity: the backend reads this instead of a
         // cwd-relative .akansha-auth.json, so a packaged install needs no
-        // token file and no developer setup.
+        // token file and no developer setup. On a single-owner desktop the
+        // bootstrap session IS the machine owner, so it also serves as the
+        // ADMIN passphrase — otherwise owner-level screens (AI Providers
+        // add/test/enable/delete) silently 403'd against a 'user' session.
+        // The secret never leaves this machine (safeStorage + IPC to our own
+        // 127.0.0.1 server); web deployments are unaffected.
         AKANSHA_ACCESS_TOKEN: getLocalAccessSecret(),
+        AKANSHA_ADMIN_TOKEN: getLocalAccessSecret(),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,

@@ -16,7 +16,6 @@ import { SettingsWorkspace } from '@/ui/workspaces/SettingsWorkspace';
 import { IntegrationsWorkspace } from '@/ui/workspaces/IntegrationsWorkspace';
 import { ProvidersWorkspace } from '@/ui/workspaces/ProvidersWorkspace';
 import { ConnectorsWorkspace } from '@/ui/workspaces/ConnectorsWorkspace';
-import { GraphWorkspace } from '@/ui/workspaces/GraphWorkspace';
 import { RepositoriesWorkspace } from '@/ui/workspaces/RepositoriesWorkspace';
 import { ModelCenter } from '@/ui/workspaces/ModelCenterWorkspace';
 import { WebSearchWorkspace } from '@/ui/workspaces/WebSearchWorkspace';
@@ -49,7 +48,6 @@ export default function AppClient() {
       case 'search': return <WebSearchWorkspace />;
       case 'cognitive': return <CognitiveWorkspace />;
       case 'missions': return <MissionsWorkspace />;
-      case 'graph': return <GraphWorkspace />;
       case 'repositories': return <RepositoriesWorkspace />;
       case 'agents': return <AgentsWorkspace />;
       case 'integrations': return <IntegrationsWorkspace />;
