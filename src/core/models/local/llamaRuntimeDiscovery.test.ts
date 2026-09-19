@@ -14,15 +14,19 @@ test('defaultLlamaCandidates always includes the repo/runtime dir', () => {
 
 test('defaultLlamaCandidates includes AKANSHA_HOME + resourcesPath when set', () => {
   const prevHome = process.env.AKANSHA_HOME;
+  const prevPkg = process.env.AKANSHA_PACKAGED_RUNTIME;
   const prevRes = (process as { resourcesPath?: string }).resourcesPath;
   try {
     process.env.AKANSHA_HOME = '/tmp/akan-home-test';
+    process.env.AKANSHA_PACKAGED_RUNTIME = '/opt/akan/resources/runtime/llama';
     (process as { resourcesPath?: string }).resourcesPath = '/opt/akan/resources';
     const c = defaultLlamaCandidates();
     assert.ok(c.includes(join('/tmp/akan-home-test', 'runtime', 'llama', exe)), 'AKANSHA_HOME candidate present');
     assert.ok(c.includes(join('/opt/akan/resources', 'runtime', 'llama', exe)), 'packaged resourcesPath candidate present');
+    assert.ok(c.includes(join('/opt/akan/resources/runtime/llama', exe)), 'forwarded AKANSHA_PACKAGED_RUNTIME candidate present');
   } finally {
     if (prevHome === undefined) delete process.env.AKANSHA_HOME; else process.env.AKANSHA_HOME = prevHome;
+    if (prevPkg === undefined) delete process.env.AKANSHA_PACKAGED_RUNTIME; else process.env.AKANSHA_PACKAGED_RUNTIME = prevPkg;
     (process as { resourcesPath?: string }).resourcesPath = prevRes;
   }
 });

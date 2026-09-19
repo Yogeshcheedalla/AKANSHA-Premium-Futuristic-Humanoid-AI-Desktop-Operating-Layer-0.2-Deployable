@@ -56,7 +56,8 @@ export function defaultLlamaCandidates(): string[] {
   const exe = process.platform === 'win32' ? 'llama-cli.exe' : 'llama-cli';
   const out: string[] = [];
   const rp = (process as { resourcesPath?: string }).resourcesPath;
-  if (rp) out.push(join(rp, 'runtime', 'llama', exe));                       // packaged app
+  if (rp) out.push(join(rp, 'runtime', 'llama', exe));                       // packaged main process
+  if (process.env.AKANSHA_PACKAGED_RUNTIME) out.push(join(process.env.AKANSHA_PACKAGED_RUNTIME, exe)); // forwarded by Electron main to the backend
   if (process.env.AKANSHA_HOME) out.push(join(process.env.AKANSHA_HOME, 'runtime', 'llama', exe)); // provisioned per-user
   out.push(join(process.cwd(), 'runtime', 'llama', exe));                     // repo / dev
   return out;

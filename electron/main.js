@@ -132,6 +132,9 @@ async function startBackend() {
         ELECTRON_RUN_AS_NODE: '1',
         NODE_ENV: 'production',
         PORT: String(serverPort),
+        // The backend runs as a node child (no process.resourcesPath), so forward the
+        // bundled runtime dir; discovery reads AKANSHA_PACKAGED_RUNTIME.
+        AKANSHA_PACKAGED_RUNTIME: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'llama') : '',
         // Local desktop identity: the backend reads this instead of a
         // cwd-relative .akansha-auth.json, so a packaged install needs no
         // token file and no developer setup.
