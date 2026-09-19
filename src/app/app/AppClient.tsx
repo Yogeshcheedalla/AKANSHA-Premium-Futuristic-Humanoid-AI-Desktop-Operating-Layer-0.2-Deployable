@@ -19,6 +19,7 @@ import { ConnectorsWorkspace } from '@/ui/workspaces/ConnectorsWorkspace';
 import { GraphWorkspace } from '@/ui/workspaces/GraphWorkspace';
 import { RepositoriesWorkspace } from '@/ui/workspaces/RepositoriesWorkspace';
 import { ModelCenter } from '@/ui/workspaces/ModelCenterWorkspace';
+import { WebSearchWorkspace } from '@/ui/workspaces/WebSearchWorkspace';
 import { FirstRunOnboarding, ONBOARD_FLAG } from '@/ui/onboarding/FirstRunOnboarding';
 import { VoiceControl } from '@/ui/voice/VoiceControl';
 import { Zap, Download, ArrowLeft } from 'lucide-react';
@@ -45,6 +46,7 @@ export default function AppClient() {
   const renderWorkspace = () => {
     switch (workspace) {
       case 'command': return <CommandWorkspace />;
+      case 'search': return <WebSearchWorkspace />;
       case 'cognitive': return <CognitiveWorkspace />;
       case 'missions': return <MissionsWorkspace />;
       case 'graph': return <GraphWorkspace />;

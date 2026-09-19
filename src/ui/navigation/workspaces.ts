@@ -14,6 +14,7 @@ export interface WorkspaceMeta {
 /** Ordered exactly as shown top→bottom in the left dock. */
 export const WORKSPACES: WorkspaceMeta[] = [
   { id: 'command', label: 'Command' },
+  { id: 'search', label: 'Web Search' },
   { id: 'cognitive', label: 'Cognitive Layer' },
   { id: 'missions', label: 'Missions' },
   { id: 'graph', label: 'Architecture Graph' },

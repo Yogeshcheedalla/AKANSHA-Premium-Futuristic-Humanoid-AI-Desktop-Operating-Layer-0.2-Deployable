@@ -1,6 +1,6 @@
-# Local Postgres for Akansha persistence (optional — the app runs without it).
-#   docker compose up -d db
-#   npm run db:push
+# Local services for Akansha (both optional — the app runs without either).
+#   docker compose up -d db        → persistence    (npm run db:push)
+#   docker compose up -d searxng   → web search     (SEARXNG_URL=http://127.0.0.1:8088)
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -19,6 +19,27 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Self-hosted SearXNG — Akansha's keyless web-search backend. JSON output is
+  # enabled via ./searxng/settings.yml. The provider only reports healthy after a
+  # REAL search returns REAL results; if this container is down, Web Search
+  # reports UNAVAILABLE and local models keep working (no silent fallback).
+  searxng:
+    image: searxng/searxng:latest
+    container_name: akansha-searxng
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: "http://127.0.0.1:8088/"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
 
 volumes:
   akansha_pgdata:

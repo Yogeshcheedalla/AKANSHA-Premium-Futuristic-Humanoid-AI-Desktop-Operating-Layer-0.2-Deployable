@@ -8,7 +8,9 @@ export interface SearchResult {
   url: string;
   snippet: string;
   source: string; // provider id
+  engine?: string; // upstream engine, when the provider aggregates several (SearXNG)
   publishedAt?: string;
+  score?: number; // raw upstream score, when honestly provided (never invented)
   relevance: number; // 0-1, provider/rank derived
   retrievedAt: number;
 }
@@ -20,6 +22,10 @@ export interface WebDocument {
   headings: string[];
   links: { text: string; href: string }[];
   metadata: Record<string, string>;
+  author?: string; // extracted when the page declares it; otherwise absent
+  publishedAt?: string; // extracted when the page declares it; otherwise absent
+  canonicalUrl?: string; // page-declared canonical URL, when present
+  via?: 'http' | 'playwright'; // retrieval tier actually used
   retrievedAt: number;
   ok: boolean;
   error?: string;
@@ -47,11 +53,14 @@ export interface WebReaderProvider {
 }
 
 export interface ResearchSource {
+  sourceId: string; // stable citation id ("src-1", "src-2", …) for the pipeline
   url: string;
   title: string;
   snippet: string;
-  content?: string; // present if the page was actually retrieved
+  content?: string; // present ONLY if the page was actually retrieved
   retrieved: boolean;
+  contentStatus: 'extracted' | 'empty' | 'retrieval_failed'; // honest per-source state
+  via?: 'http' | 'playwright'; // retrieval tier that produced the content
   retrievedAt: number;
 }
 
