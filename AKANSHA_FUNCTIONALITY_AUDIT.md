@@ -308,3 +308,16 @@ The previously‑BLOCKED production database is now live. Supabase Free (Postgre
 **Honest caveats:** the Supabase DB password was pasted into chat and the user explicitly declined rotation — treat it as a known exposure; and production uses non‑strict cert verification by default (standard for Supabase poolers; enable `AKANSHA_DB_SSL_VERIFY=1` + supply the root CA for strict pinning). Backup/restore must be confirmed via the Supabase dashboard before GA.
 
 **Status change:** Persistence — `BLOCKED` → **REAL_VERIFIED (production connected)**; durable sessions/jobs/action history/memory now have a real Postgres + pgvector + RLS backend.
+
+---
+
+## 25. Model Center → READY — REAL_VERIFIED on the target machine (2026-09-19)
+
+`scripts/verify-model-ready.ts` runs the **actual** `LocalModelRegistry.provisionAndVerify` pipeline (not the temp‑home bench) against the already‑downloaded signed GGUF + the existing llama.cpp runtime, writing to the app's real (gitignored) dev registry:
+
+- **Integrity ✓** — SHA‑256 `6a1a2eb6d156…` matches the signed catalog entry; GGUF container verified.
+- **Real inference ✓** — non‑empty output `"AKANSHA OFFLINE ORCHESTRATION READY"`.
+- **Measured benchmark ✓** — `provisionAndVerify` returned `{ok:true, usable:true, stage:'ready'}` with measured gen/prompt t/s (this run: 6.9 / 37 t/s, 24.1 s — lower than the earlier bench because the machine was busier; reported as measured, never estimated).
+- **Persisted READY ✓** — `readUsable()` read the record back from the registry → the model is genuinely `READY`.
+
+**Status change:** Model Center `READY` — `REAL_VERIFIED (target machine)`. The recommendation → integrity → runtime → inference → benchmark → register → READY chain is proven end‑to‑end with real evidence. (For the *packaged* desktop app, the same registry is populated once the runtime is provisioned into the app's own data dir — an operator/packaging step, not a code gap.)
