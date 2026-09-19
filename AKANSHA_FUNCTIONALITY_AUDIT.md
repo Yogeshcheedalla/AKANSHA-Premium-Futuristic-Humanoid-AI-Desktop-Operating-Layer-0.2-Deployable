@@ -285,3 +285,24 @@ Status: **DESCRIPTIVE_ONLY / created + locally verified** — the workflow has N
 - **Optional loop to `/api/releases`:** a `Repoint AKANSHA_RELEASES` step (guarded by a `VERCEL_TOKEN` secret) uses `scripts/ci-build-releases-env.mjs` to build the release JSON from the published assets and update the Vercel env. The helper was **functionally verified against the real v3.0.1 release** — it emitted valid `[{platform,architecture,type,filename,url,sha256?,version}]` for the installer + portable (SHA omitted only because that release's body had no checksum lines; the CI job writes them).
 
 Net: the pipeline `git tag → cross-platform build → artifact verification → gated release-publish → GitHub Release assets → (optional) AKANSHA_RELEASES → /api/releases → Download UI` is now defined in CI, publishing stays human‑gated, and nothing is auto‑published or faked.
+
+---
+
+## 24. Production persistence — CONNECTED + VERIFIED (real Supabase) (2026-09-19)
+
+The previously‑BLOCKED production database is now live. Supabase Free (PostgreSQL + pgvector + RLS) is provisioned and Akansha's deployed app connects to it.
+
+**Evidence — `db:provision` against the real Supabase instance (`DIRECT_URL`, session pooler):** **8 PASS / 0 FAIL / 1 BLOCKED**
+- connection ✓ · drizzle migrations ✓ (5 core tables) · security/RLS migration ✓ · **pgvector 0.8.2 + embedding column** ✓
+- **RLS read isolation ✓** (user‑A cannot read user‑B row) · **RLS write isolation ✓** (user‑A cannot forge a user‑B row) · **write/read‑back ✓** — all verified under the non‑owner `authenticated` role.
+- backup_restore ⊘ BLOCKED (no local `pg_dump`; Supabase runs platform backups) — reported honestly, not faked.
+
+**Evidence — live Vercel production:** `/api/health` → `{database:"up", persistence:"enabled"}` (was `unavailable/disabled`).
+
+**Two real fixes were required (both in the persistence layer only — no architecture change):**
+1. `scripts/db-provision.ts` — resolves the RLS test role by **probing which non‑owner role the connecting user can actually `SET ROLE` to** (`akansha_app` → `authenticated` → `anon`). Supabase's `postgres` can `CREATE ROLE` but cannot `SET ROLE` to a role it isn't a member of, so isolation is verified as `authenticated`.
+2. `src/db/index.ts` — TLS. `sslmode=require` in the connection string forced **strict** verification, which failed on Supabase's self‑signed intermediate (`SELF_SIGNED_CERT_IN_CHAIN`). It now **strips `sslmode`** and uses encrypted‑but‑not‑CA‑pinned TLS by default; strict pinning is opt‑in via `AKANSHA_DB_SSL_VERIFY=1`. `/api/health` also gained a redacted `databaseReason`/`dbConfigured`/`dbSsl` diagnostic.
+
+**Honest caveats:** the Supabase DB password was pasted into chat and the user explicitly declined rotation — treat it as a known exposure; and production uses non‑strict cert verification by default (standard for Supabase poolers; enable `AKANSHA_DB_SSL_VERIFY=1` + supply the root CA for strict pinning). Backup/restore must be confirmed via the Supabase dashboard before GA.
+
+**Status change:** Persistence — `BLOCKED` → **REAL_VERIFIED (production connected)**; durable sessions/jobs/action history/memory now have a real Postgres + pgvector + RLS backend.

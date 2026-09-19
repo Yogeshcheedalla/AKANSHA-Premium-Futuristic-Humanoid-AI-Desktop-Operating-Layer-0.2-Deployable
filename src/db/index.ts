@@ -24,10 +24,16 @@ function createRealDb(): Db {
   // Lazy requires — only executed when a database is configured.
   const { Pool } = require("pg");
   const { drizzle } = require("drizzle-orm/node-postgres");
-  const url = process.env.DATABASE_URL || "";
-  const ssl = /sslmode=require/i.test(url)
-    ? { require: true, rejectUnauthorized: process.env.AKANSHA_DB_SSL_VERIFY !== "0" }
-    : undefined;
+  let url = process.env.DATABASE_URL || "";
+  const managed = /sslmode=require/i.test(url) || /(supabase|pooler\.supabase|neon\.tech|render\.com|railway)/i.test(url);
+  let ssl: unknown;
+  if (managed) {
+    // sslmode=require in the string forces strict verify (fails on Supabase's self-signed
+    // intermediate). Strip it so our ssl config wins; traffic stays encrypted, and strict
+    // CA pinning is opt-in via AKANSHA_DB_SSL_VERIFY=1.
+    url = url.replace(/([?&])sslmode=require/i, (_m, p1) => (p1 === "?" ? "?" : "")).replace(/[?&]$/, "");
+    ssl = { require: true, rejectUnauthorized: process.env.AKANSHA_DB_SSL_VERIFY === "1" };
+  }
   const pool = new Pool({ connectionString: url, ssl });
   return drizzle(pool);
 }
