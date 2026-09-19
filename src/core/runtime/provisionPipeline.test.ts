@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -77,8 +77,16 @@ test('registry: registerUsable + getUsableLocalModelIds + unregister', () => {
   assert.equal(getUsableLocalModelIds().includes(entry.id), false);
   // registerUsable is exercised indirectly via provisionAndVerify only on real inference;
   // here assert the read/write helpers are consistent by a direct round-trip.
-  registerUsable(entry, '/x/gguf', { genTps: 24, totalMs: 500, text: 'ok' });
-  assert.equal(getUsableLocalModelIds().includes(entry.id), true);
-  unregister(entry.id);
-  assert.equal(getUsableLocalModelIds().includes(entry.id), false);
+  // The artifact must really exist — readiness only ever honors records whose
+  // file is present (stale READY is refused by design; see packagedProvision).
+  const artifact = join(process.env.AKANSHA_HOME!, 'reg-roundtrip.gguf');
+  writeFileSync(artifact, 'GGUF');
+  try {
+    registerUsable(entry, artifact, { genTps: 24, totalMs: 500, text: 'ok' });
+    assert.equal(getUsableLocalModelIds().includes(entry.id), true);
+    unregister(entry.id);
+    assert.equal(getUsableLocalModelIds().includes(entry.id), false);
+  } finally {
+    try { unlinkSync(artifact); } catch { /* temp */ }
+  }
 });

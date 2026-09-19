@@ -33,14 +33,21 @@ const LLAMA_CPP: RuntimeAdapter = {
 export const KNOWN_RUNTIMES: RuntimeAdapter[] = [LLAMA_CPP];
 
 /**
- * Discover installed runtimes from the GIVEN candidate paths only. It never
- * invents a runtime: if nothing launches, the adapter reports not-healthy, and
- * consumers (ModelManager, AiMode) must then NOT offer offline.
+ * Discover installed runtimes from the GIVEN candidate paths plus the standard
+ * defaults (packaged resources, AKANSHA_PACKAGED_RUNTIME, AKANSHA_HOME,
+ * cwd/runtime). It never invents a runtime: if nothing launches, the adapter
+ * reports not-healthy, and consumers (ModelManager, AiMode) must then NOT
+ * offer offline.
+ *
+ * `includeDefaults:false` restricts the search to the exact given paths so
+ * tests can deterministically simulate "runtime absent" independently of
+ * whether the developer machine happens to contain runtime binaries.
  */
-export function detectRuntimes(candidatesByRuntime: Record<string, string[]> = {}): InstalledRuntime[] {
+export function detectRuntimes(candidatesByRuntime: Record<string, string[]> = {}, opts: { includeDefaults?: boolean } = {}): InstalledRuntime[] {
+  const withDefaults = opts.includeDefaults !== false;
   return KNOWN_RUNTIMES.map((adapter) => {
     const given = candidatesByRuntime[adapter.name] ?? adapter.candidateBinaries;
-    const paths = [...given, ...defaultLlamaCandidates()];
+    const paths = withDefaults ? [...given, ...defaultLlamaCandidates()] : [...given];
     const detect = detectLlamaRuntime(paths);
     return { adapter, detect, healthy: detect.exists };
   });

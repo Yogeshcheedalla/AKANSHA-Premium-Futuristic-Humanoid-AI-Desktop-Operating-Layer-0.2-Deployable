@@ -81,9 +81,19 @@ export function ModelCenter({ embedded = false }: { embedded?: boolean }) {
   const doInstall = async (id: string) => {
     setInstall((s) => ({ ...s, [id]: 'busy' }));
     try {
+      // 1) The EXISTING planner decides the next stage and gates (never bypassed).
       const res = await fetch('/api/ai/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modelId: id }), credentials: 'same-origin' });
-      const d: InstallResult = await res.json();
-      setInstall((s) => ({ ...s, [id]: d }));
+      const plan: InstallResult = await res.json();
+      // 2) If the plan says download-provision, run that step for real through
+      //    the SAME pipeline (integrity → real inference → measured benchmark →
+      //    register). READY only ever follows genuine output; stages stream in.
+      if (plan.ok && plan.action === 'download-model') {
+        const exec = await fetch('/api/ai/install/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modelId: id }), credentials: 'same-origin' });
+        const d = await exec.json();
+        setInstall((s) => ({ ...s, [id]: { ...d, stage: d.usable ? 'ready' : d.stage, blocked: d.ok ? null : (d.blocked || d.error) } }));
+        return;
+      }
+      setInstall((s) => ({ ...s, [id]: plan }));
     } catch (e: any) {
       setInstall((s) => ({ ...s, [id]: { ok: false, usable: false, error: e.message } }));
     }

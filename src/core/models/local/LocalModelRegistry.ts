@@ -36,8 +36,20 @@ export function readUsable(): UsableLocalModel[] {
   } catch { return []; }
 }
 
+/**
+ * Readiness surface consumed by the setup VM. A persisted record is only
+ * honoured while its ARTIFACT still exists — a deleted/moved model degrades
+ * to NOT-INSTALLED truthfully instead of keeping a stale READY. (Full
+ * re-verification remains the provisionAndVerify pipeline's job; this is the
+ * cheap existence guard the spec's restart test requires.)
+ */
 export function getUsableLocalModelIds(): string[] {
-  return readUsable().map((m) => m.id);
+  return readUsable().filter((m) => existsSync(m.artifactPath)).map((m) => m.id);
+}
+
+/** Records whose artifacts no longer exist — surfaced as degraded, never as READY. */
+export function getStaleUsableModelIds(): string[] {
+  return readUsable().filter((m) => !existsSync(m.artifactPath)).map((m) => m.id);
 }
 
 function writeUsable(list: UsableLocalModel[]): void {

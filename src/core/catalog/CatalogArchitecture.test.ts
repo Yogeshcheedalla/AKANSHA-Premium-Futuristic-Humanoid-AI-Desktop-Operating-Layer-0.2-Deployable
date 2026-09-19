@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { canonicalJson, sha256Hex } from '@/core/models/local/ModelIntegrity';
 import { validateSignedCatalog, toManifestEntry, type CatalogModel, type ModelCatalog } from '@/core/catalog/ModelCatalog';
@@ -70,7 +73,7 @@ test('compat: rank orders runnable-best-first', () => {
 });
 
 test('runtime manager: no candidate paths => not available; never fabricates a runtime', () => {
-  const runtimes = detectRuntimes({}); // no paths given
+  const runtimes = detectRuntimes({}, { includeDefaults: false }); // absence provable on any machine
   assert.ok(runtimes.every((r) => r.healthy === false));
   assert.equal(runtimeFor(runtimes[0]).available, false);
 });

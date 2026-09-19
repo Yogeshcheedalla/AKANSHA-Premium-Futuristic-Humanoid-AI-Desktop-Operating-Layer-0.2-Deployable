@@ -15,12 +15,9 @@
  *   - A fixture NEVER becomes usable — usable is gated elsewhere on real inference.
  */
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { validateSignedCatalog, type CatalogModel, type SignedCatalog } from '@/core/catalog/ModelCatalog';
 import { buildFixtureCatalog } from '@/core/catalog/fixtureCatalog';
-
-const HERE = typeof import.meta !== 'undefined' ? dirname(fileURLToPath(import.meta.url)) : process.cwd();
+import { BUNDLED_SIGNED_CATALOG, BUNDLED_CATALOG_PUB_PEM } from './bundledCatalog';
 
 export type CatalogStatus = 'ready' | 'fixture' | 'not-configured' | 'invalid';
 export interface CatalogResult { status: CatalogStatus; models: CatalogModel[]; reasons: string[] }
@@ -84,14 +81,12 @@ export function loadSignedCatalog(
 export function loadCatalogForApp(env: NodeJS.ProcessEnv = process.env, now = Date.now()): CatalogResult {
   const explicit = loadSignedCatalog(env, now);
   if (explicit.status !== 'not-configured') return explicit;
-  try {
-    const catRaw = readFileSync(join(HERE, 'catalog.production.json'), 'utf8');
-    const pub = readFileSync(join(HERE, 'keys', 'catalog.pub.pem'), 'utf8');
-    const signed = JSON.parse(catRaw) as SignedCatalog;
-    if (signed.catalog?.fixture === true && !fixtureAllowed(env)) return { status: 'not-configured', models: [], reasons: ['no signed catalog configured'] };
-    const v = validateSignedCatalog(signed, pub, now);
-    return v.ok ? { status: 'ready', models: v.models, reasons: [] } : { status: 'invalid', models: [], reasons: v.reasons };
-  } catch {
-    return { status: 'not-configured', models: [], reasons: ['no signed catalog configured'] };
-  }
+  // BUNDLED fallback — statically imported so the PACKAGED server is guaranteed to
+  // carry it (readFileSync paths are invisible to Next's build-time file tracing;
+  // the shipped win-unpacked build reported NOT-CONFIGURED because of exactly that).
+  // Verification is byte-identical to before: same signature check, same public key.
+  const signed = BUNDLED_SIGNED_CATALOG;
+  if (signed.catalog?.fixture === true && !fixtureAllowed(env)) return { status: 'not-configured', models: [], reasons: ['no signed catalog configured'] };
+  const v = validateSignedCatalog(signed, BUNDLED_CATALOG_PUB_PEM, now);
+  return v.ok ? { status: 'ready', models: v.models, reasons: [] } : { status: 'invalid', models: [], reasons: v.reasons };
 }
