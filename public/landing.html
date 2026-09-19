@@ -405,6 +405,50 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
     <div class="orb-sat sat-a"></div><div class="orb-sat sat-b"></div><div class="orb-sat sat-c"></div>
   </div>
 
+  <!-- ══════════ LIVE SYSTEM STATUS ══════════ -->
+  <section id="status" class="sys-status" aria-label="Live system status">
+    <style>
+      .sys-status{max-width:1400px;margin:0 auto 6px;padding:0 24px}
+      .sys-status .ss-head{font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--faint);text-align:center;margin:0 0 14px}
+      .ss-rail{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+      .ss-item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--glass);border:1px solid var(--border)}
+      .ss-item .ss-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:#6b7794}
+      .ss-item .ss-k{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+      .ss-item .ss-v{font-size:12px;font-weight:600;color:rgba(240,244,255,.9);margin-left:auto}
+      .ss-active .ss-dot{background:#5eead4;box-shadow:0 0 8px rgba(94,234,212,.55)} .ss-active .ss-v{color:#79f0c4}
+      .ss-disabled .ss-dot{background:#f0c674} .ss-disabled .ss-v{color:#f0c674}
+      .ss-unknown .ss-dot{background:#6b7794} .ss-unknown .ss-v{color:#aeb8d0}
+      @media (max-width:900px){ .ss-rail{grid-template-columns:repeat(2,minmax(0,1fr))} }
+      @media (max-width:520px){ .ss-rail{grid-template-columns:1fr} }
+    </style>
+    <div class="ss-head">Live system status</div>
+    <div class="ss-rail" role="status" aria-live="polite">
+      <div class="ss-item ss-unknown" id="ss-server"><span class="ss-dot"></span><span class="ss-k">Server</span><span class="ss-v">Checking…</span></div>
+      <div class="ss-item ss-unknown" id="ss-persist"><span class="ss-dot"></span><span class="ss-k">Persistence</span><span class="ss-v">Checking…</span></div>
+      <div class="ss-item ss-unknown" id="ss-win"><span class="ss-dot"></span><span class="ss-k">Windows</span><span class="ss-v">Checking…</span></div>
+      <div class="ss-item ss-unknown" id="ss-linux"><span class="ss-dot"></span><span class="ss-k">Linux</span><span class="ss-v">Checking…</span></div>
+      <div class="ss-item ss-active" id="ss-fabric"><span class="ss-dot"></span><span class="ss-k">Action Fabric</span><span class="ss-v">Active</span></div>
+      <div class="ss-item ss-active" id="ss-desktop"><span class="ss-dot"></span><span class="ss-k">Desktop Control</span><span class="ss-v">Windows</span></div>
+    </div>
+    <script>
+    (function(){
+      function set(id, cls, val){ var el=document.getElementById(id); if(!el) return; el.className='ss-item '+cls; var v=el.querySelector('.ss-v'); if(v) v.textContent=val; }
+      fetch('/api/health',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(h){
+        if(h && h.ok){ set('ss-server', h.server==='up'?'ss-active':'ss-unknown', h.server==='up'?'Ready':'Unknown');
+          set('ss-persist', h.persistence==='enabled'?'ss-active':'ss-disabled', h.persistence==='enabled'?'Active':'Disabled'); }
+        else { set('ss-server','ss-unknown','Unknown'); set('ss-persist','ss-unknown','Unknown'); }
+      }).catch(function(){ set('ss-server','ss-unknown','Unknown'); set('ss-persist','ss-unknown','Unknown'); });
+      fetch('/api/releases').then(function(r){return r.ok?r.json():null;}).then(function(d){
+        var rel=(d&&d.releases)||[];
+        var win=rel.some(function(a){return a&&a.available&&a.platform==='windows';});
+        var lin=rel.some(function(a){return a&&a.available&&a.platform==='linux';});
+        set('ss-win', win?'ss-active':'ss-unknown', win?'Available':'Unknown');
+        set('ss-linux', lin?'ss-active':'ss-unknown', lin?'Available':'Unknown');
+      }).catch(function(){ set('ss-win','ss-unknown','Unknown'); set('ss-linux','ss-unknown','Unknown'); });
+    })();
+    </script>
+  </section>
+
   <!-- ══════════ DOWNLOADS ══════════ -->
   <div class="dl-panel" id="download">
     <style>
@@ -629,7 +673,7 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
     <div class="pipe-link"></div>
     <div class="pipe-node"><div class="pipe-num">4</div><div class="pipe-txt"><h4>Capability Graph</h4><p>68 live capabilities scored on fit, latency, reliability and failure history</p></div></div>
     <div class="pipe-link"></div>
-    <div class="pipe-node"><div class="pipe-num">5</div><div class="pipe-txt"><h4>Model Router</h4><p>Ollama · Gemini · OpenAI · OpenAI-compatible · llama.cpp · custom Base URLs</p></div></div>
+    <div class="pipe-node"><div class="pipe-num">5</div><div class="pipe-txt"><h4>Model Router</h4><p>Gemini · OpenAI · OpenAI-compatible · llama.cpp · custom Base URLs</p></div></div>
     <div class="pipe-link"></div>
     <div class="pipe-node"><div class="pipe-num">6</div><div class="pipe-txt"><h4>Execution Fabric</h4><p>Browser · computer-use · coding · terminal · files · devices</p></div></div>
     <div class="pipe-link"></div>
@@ -676,8 +720,8 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
   <div class="feat-grid">
     <div class="feat rv"><div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9l2.1 2.1m10 10 2.1 2.1m0-14.2-2.1 2.1m-10 10L4.9 19.1"/></svg></div>
       <h3>Multi-Provider Intelligence</h3>
-      <p>Ollama, Gemini, OpenAI, any OpenAI-compatible Base URL, llama.cpp and local servers — all behind one router. Add a provider, test it live, set fallback priority. Switch without touching architecture.</p>
-      <div class="feat-tags"><i>ollama</i><i>gemini</i><i>openai</i><i>custom-base-url</i><i>llama.cpp</i></div></div>
+      <p>Gemini, OpenAI, any OpenAI-compatible Base URL, llama.cpp and local servers — all behind one router. Add a provider, test it live, set fallback priority. Switch without touching architecture.</p>
+      <div class="feat-tags"><i>gemini</i><i>openai</i><i>custom-base-url</i><i>llama.cpp</i></div></div>
 
     <div class="feat rv"><div class="feat-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.5"><path d="M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
       <h3>Tiered Thinking</h3>
@@ -721,6 +765,46 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
   </div>
 </section>
 
+<!-- ══════════ ACTION FABRIC ══════════ -->
+<section id="action-fabric">
+  <style>
+    #action-fabric{max-width:1120px;margin:0 auto;padding:60px 24px}
+    #action-fabric h2{font-size:clamp(22px,3.4vw,32px);font-weight:600;text-align:center;letter-spacing:.01em;margin-bottom:6px}
+    #action-fabric .af-sub{text-align:center;color:var(--dim);font-size:13px;margin-bottom:32px}
+    .af-flow{display:flex;flex-wrap:wrap;align-items:stretch;justify-content:center;gap:10px}
+    .af-step{flex:1 1 120px;min-width:118px;max-width:170px;padding:16px 12px;border-radius:14px;background:var(--glass);border:1px solid var(--border);text-align:center}
+    .af-step .af-n{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin-bottom:6px}
+    .af-step .af-t{font-size:13px;font-weight:600;color:rgba(240,244,255,.9)}
+    .af-arrow{align-self:center;color:var(--faint);font-size:18px}
+    .af-proof{margin:24px auto 0;max-width:640px;text-align:center;font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:#79f0c4;font-weight:700}
+    .af-example{margin:28px auto 0;max-width:720px;padding:18px 20px;border-radius:16px;background:rgba(0,240,255,.04);border:1px solid var(--border)}
+    .af-example .af-eh{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+    .af-example ol{margin:0;padding-left:20px;color:var(--dim);font-size:12.5px;line-height:1.9}
+    .af-example code{font-family:var(--mono,ui-monospace,monospace);color:#8fe9ff}
+    @media (max-width:640px){ .af-arrow{transform:rotate(90deg)} .af-step{flex:1 1 100%;max-width:none} }
+  </style>
+  <h2>The Action Fabric</h2>
+  <p class="af-sub">Every capability runs through one governed path — nothing is trusted until it is observed.</p>
+  <div class="af-flow rv">
+    <div class="af-step"><div class="af-n">1</div><div class="af-t">Request</div></div><span class="af-arrow">→</span>
+    <div class="af-step"><div class="af-n">2</div><div class="af-t">Authorization</div></div><span class="af-arrow">→</span>
+    <div class="af-step"><div class="af-n">3</div><div class="af-t">Execution</div></div><span class="af-arrow">→</span>
+    <div class="af-step"><div class="af-n">4</div><div class="af-t">Observation</div></div><span class="af-arrow">→</span>
+    <div class="af-step"><div class="af-n">5</div><div class="af-t">Verification</div></div><span class="af-arrow">→</span>
+    <div class="af-step"><div class="af-n">6</div><div class="af-t">Evidence</div></div>
+  </div>
+  <p class="af-proof">No evidence = No success</p>
+  <div class="af-example rv">
+    <div class="af-eh">Example — illustrative only; viewing this page does not launch anything</div>
+    <ol>
+      <li>You say <code>"Open Notepad"</code></li>
+      <li>Permission gate → <code>desktop.app.launch</code></li>
+      <li>Windows launches the process → the process is <em>observed</em> (a real PID + window)</li>
+      <li>Verification confirms it → <code>COMPLETED</code> only with evidence, never from the call returning</li>
+    </ol>
+  </div>
+</section>
+
 <!-- ══════════ REPOSITORY FABRIC ══════════ -->
 <section id="fabric">
   <div class="sec-head rv">
@@ -740,6 +824,35 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
     <p>If a provider is offline Akansha still starts — it just reports the truth instead of pretending.</p>
   </div>
   <div class="boot rv" id="bootLog"></div>
+</section>
+
+<!-- ══════════ TRUST / SECURITY ══════════ -->
+<section id="trust">
+  <style>
+    #trust{max-width:1200px;margin:0 auto;padding:60px 24px}
+    #trust h2{font-size:clamp(22px,3.4vw,32px);font-weight:600;text-align:center;margin-bottom:6px}
+    #trust .t-sub{text-align:center;color:var(--dim);font-size:13px;margin-bottom:30px;max-width:640px;margin-left:auto;margin-right:auto}
+    .t-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+    .t-card{padding:18px;border-radius:16px;background:var(--glass);border:1px solid var(--border)}
+    .t-card h3{font-size:13.5px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+    .t-card p{font-size:11.5px;color:var(--dim);line-height:1.6}
+    .t-badge{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-left:auto;font-weight:600;white-space:nowrap}
+    .tb-active{color:#79f0c4;background:rgba(94,234,212,.1)}
+    .tb-protected{color:#8fe9ff;background:rgba(0,240,255,.1)}
+    .tb-disabled{color:#f0c674;background:rgba(240,198,116,.1)}
+  </style>
+  <h2>Trust Layer</h2>
+  <p class="t-sub">Akansha does not treat a tool response as proof of completion — it verifies observable outcomes before reporting success.</p>
+  <div class="t-grid rv">
+    <div class="t-card"><h3>Permission Gate <span class="t-badge tb-active">Active</span></h3><p>Risk + permission engine authorizes every action before execution.</p></div>
+    <div class="t-card"><h3>Credential Vault <span class="t-badge tb-protected">Protected</span></h3><p>Secrets encrypted at rest; only hashes and references are stored — never raw keys.</p></div>
+    <div class="t-card"><h3>Action Verification <span class="t-badge tb-active">Active</span></h3><p>Success requires observed evidence, not an API returning OK.</p></div>
+    <div class="t-card"><h3>Execution Ledger <span class="t-badge tb-active">Active</span></h3><p>Exactly-once semantics guard against duplicate actions and retries.</p></div>
+    <div class="t-card"><h3>Injection Protection <span class="t-badge tb-active">Active</span></h3><p>Allowlisted resolution; shell metacharacters are rejected, never interpolated.</p></div>
+    <div class="t-card"><h3>Audit Events <span class="t-badge tb-active">Active</span></h3><p>Action lifecycle emitted to the event bus and a best-effort durable store.</p></div>
+    <div class="t-card"><h3>User Authorization <span class="t-badge tb-active">Active</span></h3><p>Mutating desktop actions require explicit confirmation through the fabric.</p></div>
+    <div class="t-card"><h3>Database Persistence <span class="t-badge tb-disabled">Disabled</span></h3><p>No DATABASE_URL configured — the durable store is ready but not yet enabled.</p></div>
+  </div>
 </section>
 
 <!-- ══════════ CTA ══════════ -->
@@ -805,7 +918,7 @@ footer .fbrand{color:var(--dim);letter-spacing:.2em;font-size:12px;margin-bottom
   const lines = [
     'Understand → Plan → Act → Verify → Learn',
     '68 live capabilities · 12 architecture layers · 31 repositories',
-    'Ollama · Gemini · OpenAI · llama.cpp · Custom Base URLs',
+    'Gemini · OpenAI · llama.cpp · Custom Base URLs',
     'NO EVIDENCE = NO SUCCESS',
     'Tier 0 deterministic path: ~14ms, zero tokens',
     'One orchestrator. Many providers. Zero competing brains.'
@@ -873,7 +986,7 @@ document.querySelectorAll('[data-count]').forEach(el=>co.observe(el));
 /* ═════════ LAYER FABRIC ═════════ */
 (function(){
   const layers=[
-    ['Model Intelligence','Ollama · llama.cpp · Gemini · OpenAI · Odysseus · Heretic · OmniRoute',7,6],
+    ['Model Intelligence','llama.cpp · Gemini · OpenAI · Odysseus · Heretic · OmniRoute',7,6],
     ['Memory','Mem0 · Letta · TencentDB · LifeOS',4,3],
     ['Orchestration','LangGraph · Brigade · DeepSeek Harness · Paperclip',4,4],
     ['Browser','Alibaba Page Agent · Browser Use',2,2],
