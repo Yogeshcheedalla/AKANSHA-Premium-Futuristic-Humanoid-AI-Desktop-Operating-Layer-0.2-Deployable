@@ -29,3 +29,20 @@ test('ledger: distinct requestIds execute independently', async () => {
   await ledger.run('b', async () => { calls += 1; });
   assert.equal(calls, 2);
 });
+
+test('ledger: nested execution MUST use a scoped id — same-id nesting deadlocks (packaged "open notepad" regression)', async () => {
+  const ledger = new ExecutionLedger();
+  // The bug shape: outer holds the id across an await, inner joins its own
+  // in-flight promise → circular wait. Prove it hangs, then prove the fix.
+  const deadlocked = await Promise.race([
+    ledger.run('req-x', async () => { await Promise.resolve(); return ledger.run('req-x', async () => 'inner'); }).then(() => 'resolved'),
+    new Promise((r) => setTimeout(() => r('deadlocked'), 250)),
+  ]);
+  assert.equal(deadlocked, 'deadlocked');
+
+  const fixed = await ledger.run('req-y', async () => {
+    await Promise.resolve();
+    return ledger.run('req-y:fabric', async () => 'inner-ok');
+  });
+  assert.equal(fixed, 'inner-ok');
+});

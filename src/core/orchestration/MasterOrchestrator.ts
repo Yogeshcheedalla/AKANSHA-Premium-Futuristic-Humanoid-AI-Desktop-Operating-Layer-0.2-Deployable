@@ -259,9 +259,14 @@ export class MasterOrchestrator {
         const mapped = mapToDesktopAction(mission.goal);
         if (mapped) {
           this.emit({ type: 'MISSION_DESKTOP_DISPATCH', missionId, payload: { actionId: mapped.actionId, application: mapped.application } });
+          // NOTE: the command pipeline already holds an ExecutionLedger slot under
+          // this requestId, and the dispatcher JOINS in-flight promises by id —
+          // reusing the id here deadlocks (found live: "open notepad" hung forever).
+          // The nested fabric execution therefore gets its OWN ledger scope; the
+          // original requestId stays on the event metadata for audit/idempotency.
           const res = await actionDispatcher.dispatch({
             actionId: mapped.actionId,
-            requestId: mission.context.requestId || missionId,
+            requestId: `${mission.context.requestId || missionId}:fabric`,
             missionId,
             userId: mission.context.userId,
             confirmed: true, // a direct user command is the authorization surface
