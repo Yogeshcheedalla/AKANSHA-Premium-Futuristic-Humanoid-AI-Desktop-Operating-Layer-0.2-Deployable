@@ -9,7 +9,7 @@ import type { AiRuntimeStatus, RuntimeSnapshot } from '../providers/providerBoot
 export interface SystemDimensions {
   network: 'ONLINE' | 'UNKNOWN';
   ai: AiRuntimeStatus;
-  voiceInput: 'LOCAL_WHISPER_READY' | 'CLOUD_ASR_READY' | 'AUTH_REQUIRED' | 'UNAVAILABLE';
+  voiceInput: 'LOCAL_WHISPER_READY' | 'CLOUD_ASR_CONFIGURED' | 'UNAVAILABLE';
   voiceOutput: 'READY'; // client Web Speech TTS; the renderer confirms at runtime
   desktop: 'READY' | 'UNAVAILABLE';
   browser: { navigation: 'READY' | 'UNAVAILABLE'; domAutomation: 'NOT_IMPLEMENTED' };
@@ -17,17 +17,21 @@ export interface SystemDimensions {
   persistence: 'READY' | 'DEGRADED';
 }
 
-/** Voice-input truth: local Whisper READY wins; else a connected cloud ASR; else auth/unavailable. */
+/**
+ * Voice-input truth. LOCAL_WHISPER_READY only when a REAL transcription passed.
+ * A cloud provider that is merely configured+reachable is CLOUD_ASR_CONFIGURED —
+ * NOT "ready", because we have not proven it transcribes (e.g. zero credits).
+ */
 export function classifyVoiceInput(localState: string, hasCloudAsrProvider: boolean): SystemDimensions['voiceInput'] {
   if (localState === 'READY') return 'LOCAL_WHISPER_READY';
-  if (hasCloudAsrProvider) return 'CLOUD_ASR_READY';
-  return 'AUTH_REQUIRED';
+  if (hasCloudAsrProvider) return 'CLOUD_ASR_CONFIGURED';
+  return 'UNAVAILABLE';
 }
 
 export async function systemDimensions(snapshot: RuntimeSnapshot): Promise<SystemDimensions> {
   const local = await localAsrStatus();
   const isWin = platform() === 'win32';
-  const hasCloudAsr = snapshot.routes.some((r) => r.enabled && r.credentialConfigured && (r.health === 'AVAILABLE' || r.health === 'AUTH_REQUIRED' || r.health === 'RATE_LIMITED' || r.health === 'DEGRADED'));
+  const hasCloudAsr = snapshot.routes.some((r) => r.enabled && r.credentialConfigured && r.health === 'AVAILABLE');
   const network: SystemDimensions['network'] = snapshot.routes.some((r) => r.health === 'AVAILABLE') || snapshot.local.runtimeReady ? 'ONLINE' : 'UNKNOWN';
   return {
     network,

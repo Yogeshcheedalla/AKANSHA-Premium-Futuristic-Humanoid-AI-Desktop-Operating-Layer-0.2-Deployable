@@ -10,10 +10,10 @@ test('discoverWhisper returns null (→ UNAVAILABLE) when no runtime/model exist
   assert.equal(r, null);
 });
 
-test('classifyVoiceInput: local READY wins; else cloud; else auth-required', () => {
+test('classifyVoiceInput: local READY wins; else configured-not-ready; else unavailable', () => {
   assert.equal(classifyVoiceInput('READY', false), 'LOCAL_WHISPER_READY');
-  assert.equal(classifyVoiceInput('UNAVAILABLE', true), 'CLOUD_ASR_READY');
-  assert.equal(classifyVoiceInput('DISCOVERED', false), 'AUTH_REQUIRED');
+  assert.equal(classifyVoiceInput('UNAVAILABLE', true), 'CLOUD_ASR_CONFIGURED');
+  assert.equal(classifyVoiceInput('DISCOVERED', false), 'UNAVAILABLE');
 });
 
 test('provisionArtifact REFUSES unpinned/arbitrary downloads (never fakes READY)', async () => {
