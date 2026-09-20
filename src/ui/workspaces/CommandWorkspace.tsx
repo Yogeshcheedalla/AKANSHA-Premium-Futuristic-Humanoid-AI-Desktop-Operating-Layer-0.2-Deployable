@@ -4,6 +4,7 @@ import { GlassSurface } from '../core/GlassSurface';
 import { AkanshaPresence, type AIState } from '../assistant/AkanshaPresence';
 import { OrganicWaveform } from '../assistant/OrganicWaveform';
 import { audioEngine, parseVoiceSessionCommand, type VoiceState } from '../voice/AudioEngine';
+import { styleFromTurn } from '@/core/voice/emotion/emotionStyle';
 import { Mic, Send, Loader2, Zap } from 'lucide-react';
 
 interface CommandResult {
@@ -158,8 +159,9 @@ export const CommandWorkspace = ({ onNavigate }: { onNavigate?: (ws: string) => 
         const reply = data.response || data.error || 'No response.';
         setMessages((prev) => [...prev, { text: reply, sender: 'akansha' }]);
         setState(data.status === 'AI_PROVIDER_OFFLINE' ? 'error' : 'success');
-        // Speak through the single authoritative path (deduped by responseId).
-        if (audioEngine) audioEngine.speak(`resp-${Date.now()}`, reply);
+        // Speak through the single authoritative path (deduped by responseId),
+        // with emotion/prosody shaped from the real outcome — never fake facts.
+        if (audioEngine) audioEngine.speak(`resp-${Date.now()}`, reply, styleFromTurn(data.response || '', { status: data.status, failureClass: (data as any).failureClass, intent: data.intent }));
         setTimeout(() => setState('idle'), 2200);
       }, 400);
     } catch (e: any) {

@@ -105,6 +105,8 @@ export async function POST(request: Request) {
     // Authoritative bootstrap: loads providers, discovers models, probes health
     // ONCE (cached afterwards). Every route below sees live evidence.
     { const { providerBootstrap } = await import('@/core/providers/providerBootstrap'); await providerBootstrap.run(); }
+    // Resume any durable tasks that were RUNNING/WAITING before a restart (once).
+    { const { taskManager } = await import('@/core/tasks/TaskManager'); taskManager.reconcile(); }
 
     const body = await request.json();
     const text: string = (body?.text || body?.message || '').toString().trim();
@@ -219,6 +221,27 @@ export async function POST(request: Request) {
             trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['install delegated to the real gated pipeline.'] },
             latencyMs: Date.now() - started,
           };
+        }
+
+        // ── TIER 0d: durable BACKGROUND TASK (multi-step / timed). The chat
+        //    response finishing must NOT end the task — the executor keeps it
+        //    alive and it survives restart. Only explicit cancel ends it.
+        {
+          const { planTask } = await import('@/core/tasks/taskPlanner');
+          const { taskManager } = await import('@/core/tasks/TaskManager');
+          const steps = await planTask(text);
+          if (steps && steps.length >= 2) {
+            const t = taskManager.create(text, steps, 'local');
+            taskManager.start(t.taskId);
+            return {
+              ok: true, requestId, intent: intent.intent, tier: 'tier0', path: 'background-task',
+              usedModel: false, status: 'RUNNING',
+              response: `Understood, Boss. I'm continuing this in the background as a task (${steps.length} steps: ${steps.map((s) => s.label).join(', ')}). I'll tell you when it's complete, blocked, or failed.`,
+              task: { taskId: t.taskId, steps: steps.map((s) => s.label) },
+              trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['Durable background task via TaskManager.'] },
+              latencyMs: Date.now() - started,
+            };
+          }
         }
 
         // ── TIER 1: conversation — genuine model reply when a provider exists,

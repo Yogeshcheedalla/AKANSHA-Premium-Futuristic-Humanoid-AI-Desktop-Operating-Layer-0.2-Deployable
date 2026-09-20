@@ -32,6 +32,8 @@ export const APP_REGISTRY: AppSpec[] = [
   { aliases: ['explorer', 'file explorer', 'this pc'], exe: '%WINDIR%\\explorer.exe', titleHint: 'explorer', processName: 'explorer', launch: 'win32' },
   { aliases: ['edge', 'microsoft edge', 'browser'], exe: '%PROGRAMFILESX86%\\Microsoft\\Edge\\Application\\msedge.exe', titleHint: 'Microsoft Edge', processName: 'msedge', launch: 'win32' },
   { aliases: ['chrome', 'google chrome'], exe: '%PROGRAMFILES%\\Google\\Chrome\\Application\\chrome.exe', titleHint: 'Google Chrome', processName: 'chrome', launch: 'win32' },
+  { aliases: ['brave', 'brave browser'], exe: '%PROGRAMFILESX86%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe', titleHint: 'Brave', processName: 'brave', launch: 'win32' },
+  { aliases: ['firefox', 'mozilla firefox'], exe: '%PROGRAMFILES%\\Mozilla Firefox\\firefox.exe', titleHint: 'Firefox', processName: 'firefox', launch: 'win32' },
 ];
 
 const norm = (s: string) => s.toLowerCase().trim();

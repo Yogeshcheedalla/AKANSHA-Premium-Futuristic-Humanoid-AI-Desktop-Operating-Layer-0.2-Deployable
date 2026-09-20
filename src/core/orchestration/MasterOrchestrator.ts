@@ -11,8 +11,9 @@ import { permissionEngine } from '../execution/PermissionEngine';
 import { webCapability } from '../web/WebCapability';
 import { frameUntrustedSource } from '../search/webSearch';
 import { actionDispatcher } from '../actions/ActionDispatcher';
-import { mapToDesktopAction } from '../desktop/desktopCommands';
-import '../desktop/desktopCapabilities'; // side effect: registers desktop.app.launch/close on the fabric
+import { routeCommand } from '../desktop/commandRouter';
+import '../desktop/desktopCapabilities'; // side effect: registers desktop.app.launch/close/focus on the fabric
+import '../desktop/browserCapabilities'; // side effect: registers browser.navigate + desktop.app.launchResolved
 
 export interface MissionState {
   id: string;
@@ -256,21 +257,16 @@ export class MasterOrchestrator {
       // verification → event → best-effort persistence). Multi-step goals are
       // NOT matched here and fall through to the planner/engine path below.
       if (intent === 'command') {
-        const mapped = mapToDesktopAction(mission.goal);
-        if (mapped) {
-          this.emit({ type: 'MISSION_DESKTOP_DISPATCH', missionId, payload: { actionId: mapped.actionId, application: mapped.application } });
-          // NOTE: the command pipeline already holds an ExecutionLedger slot under
-          // this requestId, and the dispatcher JOINS in-flight promises by id —
-          // reusing the id here deadlocks (found live: "open notepad" hung forever).
-          // The nested fabric execution therefore gets its OWN ledger scope; the
-          // original requestId stays on the event metadata for audit/idempotency.
+        const routed = await routeCommand(mission.goal);
+        if (routed) {
+          this.emit({ type: 'MISSION_DESKTOP_DISPATCH', missionId, payload: { actionId: routed.actionId, label: routed.label } });
           const res = await actionDispatcher.dispatch({
-            actionId: mapped.actionId,
+            actionId: routed.actionId,
             requestId: `${mission.context.requestId || missionId}:fabric`,
             missionId,
             userId: mission.context.userId,
             confirmed: true, // a direct user command is the authorization surface
-            payload: { application: mapped.application },
+            payload: routed.payload,
           });
           this.fabricOutcomeToMission(mission, res);
           mission.updatedAt = Date.now();

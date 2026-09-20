@@ -92,7 +92,12 @@ try {
 
   if ($action -eq 'launch') {
     $exe = $req.exe
-    $proc = Start-Process $exe -PassThru
+    $proc = $null
+    if ($req.arguments -and @($req.arguments).Count -gt 0) {
+      $proc = Start-Process $exe -ArgumentList @($req.arguments) -PassThru
+    } else {
+      $proc = Start-Process $exe -PassThru
+    }
     $launchedPid = $proc.Id
     $titleHint = $req.titleHint
     $found = $null; $title = $null; $realPid = $null
@@ -103,7 +108,21 @@ try {
       if (-not $w -and $titleHint) { $w = Find-ByTitle $titleHint }
       if ($w) { $found = $w; $title = $w.Current.Name; try { $realPid = $w.Current.ProcessId } catch {}; break }
     }
-    Out @{ ok=[bool]$found; found=[bool]$found; pid=$realPid; title=$title }
+    # A process may exist even before a window appears (browser first-run).
+    $procAlive = $false
+    if ($launchedPid) { try { if (Get-Process -Id $launchedPid -ErrorAction Stop) { $procAlive = $true } } catch {} }
+    Out @{ ok=([bool]$found -or $procAlive); found=[bool]$found; processAlive=$procAlive; pid=$realPid; title=$title }
+    return
+  }
+
+  if ($action -eq 'processExists') {
+    $names = @($req.processNames)
+    $running = @()
+    foreach ($n in $names) {
+      $p = @(Get-Process -Name $n -ErrorAction SilentlyContinue)
+      if ($p.Count -gt 0) { $running += @{ name=$n; count=$p.Count; pid=$p[0].Id } }
+    }
+    Out @{ ok=($running.Count -gt 0); running=$running }
     return
   }
 
@@ -253,6 +272,9 @@ interface PsResult {
   foreground?: boolean;
   foregroundPid?: number;
   targetPid?: number;
+  // 'launch' / 'processExists' fields
+  processAlive?: boolean;
+  running?: { name: string; count: number; pid: number }[];
 }
 
 export class WindowsComputerUseProvider implements ComputerUseProvider {
@@ -318,6 +340,27 @@ export class WindowsComputerUseProvider implements ComputerUseProvider {
       pollIntervalMs: 400,
     });
     return { found: !!r.found, pid: r.pid ?? undefined, title: r.title ?? undefined };
+  }
+
+  /** Launch a RESOLVED executable with typed arguments (e.g. a URL). Never shell text. */
+  async launchExe(exe: string, args: string[], titleHint: string): Promise<WindowObservation & { processAlive?: boolean }> {
+    const r = await this.run({
+      action: 'launch',
+      exe,
+      arguments: args,
+      titleHint,
+      launch: 'win32',
+      pollIterations: 14,
+      pollIntervalMs: 400,
+    });
+    return { found: !!r.found, processAlive: !!r.processAlive, pid: r.pid ?? undefined, title: r.title ?? undefined };
+  }
+
+  /** True if any named process is currently running (verifies the SPECIFIC browser). */
+  async processExists(processNames: string[]): Promise<{ running: boolean; pid?: number }> {
+    const r = await this.run({ action: 'processExists', processNames });
+    const first = Array.isArray(r.running) ? r.running[0] : null;
+    return { running: !!r.ok, pid: first?.pid };
   }
 
   /** Terminate a running allowlisted application by process name and OBSERVE that it is gone. */

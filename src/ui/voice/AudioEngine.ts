@@ -424,7 +424,7 @@ export class AudioEngine {
   }
 
   // ── Real TTS through the single authoritative path ───────────────────
-  speak(responseId: string, text: string): { accepted: boolean; reason: string } {
+  speak(responseId: string, text: string, prosody?: { rate?: number; pitch?: number; style?: string }): { accepted: boolean; reason: string } {
     if (!this.shouldSpeak(responseId)) return { accepted: false, reason: 'duplicate responseId suppressed' };
     const caps = this.capabilities();
     if (!caps.tts) { this.transition('ERROR', 'TTS_UNAVAILABLE'); return { accepted: false, reason: 'TTS_UNAVAILABLE' }; }
@@ -436,7 +436,8 @@ export class AudioEngine {
       const u = new SpeechSynthesisUtterance(text);
       const voice = pickFemaleVoice();
       if (voice) u.voice = voice;
-      u.rate = 1.0; u.pitch = 1.05;
+      u.rate = prosody?.rate ?? 1.0;
+      u.pitch = prosody?.pitch ?? 1.05;
       u.onend = () => { this.speaking = false; this.currentResponseId = null; this.transition('STANDBY'); };
       u.onerror = () => { this.speaking = false; this.transition('ERROR', 'PLAYBACK_ERROR'); };
       window.speechSynthesis.speak(u);
