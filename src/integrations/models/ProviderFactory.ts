@@ -31,6 +31,7 @@ export interface ProviderConfigInput {
   organization?: string;
   project?: string;
   headers?: Record<string, string>;
+  keyless?: boolean;
 }
 
 const DEFAULT_BASE_URLS: Record<ProviderType, string | undefined> = {
@@ -466,7 +467,92 @@ export class OpenRouterProvider extends OpenAICompatibleProvider {
   }
 }
 
+/**
+ * Keyless free provider (currently Pollinations' text endpoint).
+ *
+ * A genuinely no-API-key free route so a fresh install can ANSWER without the
+ * user configuring anything. It is NOT a special-cased "always ready" provider:
+ * healthCheck performs a REAL GET /models and only reports AVAILABLE when the
+ * endpoint actually returns a model list, and generate() is a real POST. If the
+ * upstream starts requiring a key or goes down, it honestly reports the failure
+ * like every other provider (the runtime trusts live evidence, not the claim).
+ *
+ * Verified live: GET /models → 200 [{name,...}]; POST /openai {model,messages}
+ * → 200 real assistant reply. No Authorization header is sent.
+ */
+export class KeylessFreeProvider extends OpenAICompatibleProvider {
+  constructor(config: ProviderConfigInput) {
+    super({ ...config, type: 'openai-compatible' });
+  }
+  // Keyless: never treated as an auth-gated remote provider.
+  protected isRemote(): boolean { return false; }
+  protected authHeaders(): Record<string, string> {
+    return { 'Content-Type': 'application/json', ...(this.config.headers || {}) };
+  }
+  private chatUrl(): string { return `${this.baseUrl()}/openai`; }
+
+  async listModels(): Promise<ModelInfo[]> {
+    try {
+      const res = await fetch(`${this.baseUrl()}/models`, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return [];
+      const raw = await res.json();
+      const arr: any[] = Array.isArray(raw) ? raw : (raw?.data || []);
+      return arr
+        .map((m) => {
+          const id: string = m.id || m.name || String(m);
+          return {
+            id, provider: this.id, providerType: this.type,
+            displayName: m.description || m.name || id,
+            capabilities: inferCapabilitiesFromId(id, this.capabilities()),
+            contextWindow: m.context_length || m.contextWindow || 32000,
+            maxOutputTokens: 4096, available: true, healthScore: 1,
+          } satisfies ModelInfo;
+        })
+        .filter((m) => m.id);
+    } catch { return []; }
+  }
+
+  async healthCheck(): Promise<HealthStatus> {
+    const started = Date.now();
+    try {
+      const res = await fetch(`${this.baseUrl()}/models`, { signal: AbortSignal.timeout(8000) });
+      const latencyMs = Date.now() - started;
+      if (res.status === 401 || res.status === 403) return { state: 'AUTH_REQUIRED', latencyMs, detail: 'Keyless endpoint now requires auth', checkedAt: Date.now() };
+      if (!res.ok) return { state: 'DEGRADED', latencyMs, detail: `HTTP ${res.status}`, checkedAt: Date.now() };
+      const raw = await res.json().catch(() => null);
+      const count = Array.isArray(raw) ? raw.length : (raw?.data?.length || 0);
+      if (count === 0) return { state: 'DEGRADED', latencyMs, detail: 'no models listed', checkedAt: Date.now() };
+      return { state: 'AVAILABLE', latencyMs, detail: `${count} keyless models`, checkedAt: Date.now() };
+    } catch (e: any) {
+      return { state: 'UNAVAILABLE', latencyMs: Date.now() - started, detail: e?.name === 'TimeoutError' ? 'timeout' : 'unreachable', checkedAt: Date.now() };
+    }
+  }
+
+  async generate(request: ModelRequest): Promise<ModelResponse> {
+    const model = request.model || this.config.defaultModel || 'openai';
+    const res = await fetch(this.chatUrl(), {
+      method: 'POST',
+      headers: this.authHeaders(),
+      body: JSON.stringify({ model, messages: request.messages, temperature: request.temperature ?? 0.7, max_tokens: request.maxTokens ?? 1024 }),
+      signal: request.signal || AbortSignal.timeout(this.config.timeoutMs ?? 45000),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`${this.name} HTTP ${res.status}${body ? `: ${body.slice(0, 160)}` : ''}`);
+    }
+    const json = await res.json();
+    const choice = json?.choices?.[0];
+    return {
+      id: json?.id || `${this.id}-${Date.now()}`,
+      content: choice?.message?.content || '',
+      model, provider: this.id, providerType: this.type,
+      finishReason: choice?.finish_reason || 'stop',
+    };
+  }
+}
+
 export function createProvider(config: ProviderConfigInput): ModelProvider {
+  if (config.keyless) return new KeylessFreeProvider(config);
   switch (config.type) {
     case 'ollama':
       return new OllamaProvider(config);

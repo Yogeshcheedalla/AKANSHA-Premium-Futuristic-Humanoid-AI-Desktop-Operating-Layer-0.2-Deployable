@@ -5,8 +5,9 @@ import { skillRegistry } from '@/core/skills/SkillRegistry';
 import { masterOrchestrator } from '@/core/orchestration/MasterOrchestrator';
 import { learningEngine } from '@/core/learning/LearningEngine';
 import { modelRouter } from '@/core/models/ModelRouter';
-import { mapToAiModePhrase } from '@/core/models/AiModeCommands';
+import { mapToAiModePhrase, parseModelFlowCommand } from '@/core/models/AiModeCommands';
 import { applyAiMode } from '@/core/models/AiModeApply';
+import { recommendModels } from '@/core/catalog/recommend';
 import { executionLedger } from '@/core/runtime/ExecutionLedger';
 import { resourceGovernor } from '@/core/resources/ResourceGovernor';
 import { memoryIntelligence } from '@/core/memory/MemoryIntelligence';
@@ -156,7 +157,7 @@ export async function POST(request: Request) {
           const applied = applyAiMode(modePhrase.mode);
           const label = modePhrase.mode === 'offline' ? 'Offline (local-first)' : modePhrase.mode === 'cloud' ? 'Online (cloud providers)' : modePhrase.mode === 'both' ? 'Both (local + cloud)' : 'Auto (balanced)';
           const reply = applied.requestedMode === 'offline' && !applied.offlineReady
-            ? `I set the router to local-first, but offline mode is NOT ready yet: ${applied.reason || 'no installed model has passed a real inference test'}. Install one from Models — I will not silently use the cloud and call it offline, Boss.`
+            ? `No verified local model is installed yet, Boss, so offline AI isn't ready — and I won't use the cloud and call it offline. Want me to show the models that fit this device? Say "show recommended models", or just "install recommended model" and I'll set up the best one for you.`
             : `${label} mode enabled${applied.reason ? ` — ${applied.reason}` : '.'} Routing updated live, Boss.`;
           return {
             ok: true,
@@ -174,6 +175,48 @@ export async function POST(request: Request) {
               selected: { providerId: 'model-router', modelId: 'policy' },
               reasons: ['Applied through the existing ModelRouter policy — the same authority the Settings toggle uses.'],
             },
+            latencyMs: Date.now() - started,
+          };
+        }
+
+        // ── TIER 0c: guided offline model flow (real recommendations + real install).
+        const modelFlow = parseModelFlowCommand(text);
+        if (modelFlow === 'show-recommendations') {
+          const recs = recommendModels(process.env, 5);
+          const body = recs.length
+            ? recs.map((r, i) => `${i + 1}. ${r.name}${r.sizeGB ? ` (~${r.sizeGB} GB)` : ''} — ${r.rating.toLowerCase()}`).join('\n')
+            : 'No runnable model matched this device from the signed catalog right now.';
+          return {
+            ok: true, requestId, intent: intent.intent, tier: 'tier0', path: 'model-recommend',
+            usedModel: false, status: 'COMPLETED',
+            response: recs.length
+              ? `Here are the models that fit this device, Boss:\n${body}\n\nSay "install recommended model" and I'll set up the best one (${recs[0].name}).`
+              : body,
+            recommendations: recs,
+            action: recs.length ? { navigate: 'modelcenter' } : undefined,
+            trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['CompatibilityEngine device-fit recommendations.'] },
+            latencyMs: Date.now() - started,
+          };
+        }
+        if (modelFlow === 'install-recommended') {
+          const recs = recommendModels(process.env, 1);
+          if (!recs.length) {
+            return {
+              ok: true, requestId, intent: intent.intent, tier: 'tier0', path: 'model-install',
+              usedModel: false, status: 'COMPLETED',
+              response: 'No runnable model matched this device from the signed catalog, Boss — I won\'t install something I can\'t verify. Open Models to search manually.',
+              trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['no device-fit model.'] },
+              latencyMs: Date.now() - started,
+            };
+          }
+          // The CLIENT performs the real install via /api/ai/install/execute (the
+          // existing gated pipeline). We never claim it succeeded here.
+          return {
+            ok: true, requestId, intent: intent.intent, tier: 'tier0', path: 'model-install',
+            usedModel: false, status: 'COMPLETED',
+            response: `Okay Boss — installing ${recs[0].name}${recs[0].sizeGB ? ` (~${recs[0].sizeGB} GB)` : ''}. I'll download it, verify its integrity, and run a real inference test before I call it ready. Watch Models for progress.`,
+            action: { install: recs[0].modelId, navigate: 'modelcenter' },
+            trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['install delegated to the real gated pipeline.'] },
             latencyMs: Date.now() - started,
           };
         }

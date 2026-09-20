@@ -68,10 +68,30 @@ export function decideSegment(
   return speaking ? 'start' : 'hold';
 }
 
-/** Consecutive transcription failures before the session honestly gives up. */
-export function serverAsrFailure(code: string, consecutive: number): 'fatal' | 'retry' {
-  if (code === 'NO_TRANSCRIPTION_PROVIDER' || code === 'AUTH_FAILED') return 'fatal';
-  return consecutive >= 3 ? 'fatal' : 'retry';
+/**
+ * Continuous voice NEVER auto-stops: a transcription failure keeps the session
+ * armed (LISTENING) and only surfaces the reason, so the user can leave voice
+ * on and keep talking. The session ends ONLY via an explicit stop (pill click,
+ * Ctrl+Space again, Esc, or the spoken "stop the voice mode"). 'fatal' is
+ * reserved for a hard microphone loss (no stream at all), which is not a
+ * provider/route problem.
+ */
+export function serverAsrFailure(code: string, _consecutive: number): 'fatal' | 'retry' {
+  if (code === 'MICROPHONE_LOST') return 'fatal';
+  return 'retry';
+}
+
+/**
+ * Spoken voice-session control. These are handled ON THE CLIENT (they control
+ * the microphone session itself, so they must not be sent to the model). The
+ * transcript is only ever executed when it is a FINAL ASR result.
+ */
+export function parseVoiceSessionCommand(transcript: string): 'stop' | 'start' | null {
+  const t = String(transcript || '').toLowerCase().replace(/[.!?,]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(please\s+)?(stop|end|close|turn off|disable|quit)( the| this)?( voice| voice mode| listening| mic| microphone)?( mode)?( please| now)?$/.test(t)) return 'stop';
+  if (/^(please\s+)?(start|resume|enable|turn on|begin|continue)( the| this)?( voice| voice mode| listening| mic| microphone)?( mode)?( please| now)?$/.test(t)) return 'start';
+  if (/^(stop|resume) listening$/.test(t)) return t.startsWith('stop') ? 'stop' : 'start';
+  return null;
 }
 
 const ALLOWED: Record<VoiceState, VoiceState[]> = {
@@ -357,8 +377,12 @@ export class AudioEngine {
         this.asrMode = 'none';
         this.detail = String(json?.detail || code).slice(0, 160);
         this.transition('ERROR', code === 'NO_TRANSCRIPTION_PROVIDER' ? 'ASR_PROVIDER_MISSING' : 'ASR_UNAVAILABLE');
-      } else if (this.state === 'PROCESSING') {
-        this.transition('LISTENING');
+      } else {
+        // Continuous: stay armed and listening, but tell the user WHY nothing
+        // transcribed (e.g. no free ASR key yet). Never tear the session down.
+        this.detail = String(json?.detail || code).slice(0, 160);
+        if (this.state === 'PROCESSING') this.transition('LISTENING');
+        this.emitState();
       }
     } catch {
       this.asrFailures += 1;
@@ -366,8 +390,10 @@ export class AudioEngine {
         this.serverAsrActive = false; this.asrMode = 'none';
         this.detail = 'transcription endpoint unreachable';
         this.transition('ERROR', 'ASR_UNAVAILABLE');
-      } else if (this.state === 'PROCESSING') {
-        this.transition('LISTENING');
+      } else {
+        this.detail = 'transcription endpoint unreachable — staying in continuous listening';
+        if (this.state === 'PROCESSING') this.transition('LISTENING');
+        this.emitState();
       }
     }
   }

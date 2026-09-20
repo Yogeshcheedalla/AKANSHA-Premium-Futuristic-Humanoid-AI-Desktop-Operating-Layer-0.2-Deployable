@@ -75,6 +75,9 @@ export class ProviderManager {
         fallbackPriority: 10,
       },
       { id: 'local-server', name: 'Local Inference Server', type: 'local', baseUrl: 'http://127.0.0.1:8080', enabled: false, fallbackPriority: 60 },
+      // Keyless free default — so a fresh install can ANSWER before any setup.
+      // Health-probed like every provider; only used when a live probe succeeds.
+      { id: 'pollinations', name: 'Free AI (no key)', type: 'openai-compatible', baseUrl: 'https://text.pollinations.ai', keyless: true, defaultModel: 'openai', enabled: true, fallbackPriority: 55 },
     ];
   }
 
@@ -151,6 +154,17 @@ export class ProviderManager {
         fallbackPriority: row.fallbackPriority,
         ...(typeof row.settings === 'object' && row.settings ? row.settings : {}),
       });
+    }
+
+    // Reconcile built-ins: ensure every built-in exists (re-adding any that were
+    // removed or that predate a new default like 'pollinations'). This is the
+    // documented "a removed built-in reverts to its seed" behavior, made true even
+    // when the store is non-empty. Custom (non-built-in) rows the user removed
+    // stay gone; a disabled built-in already present is left as-is.
+    const present = new Set(rows.map((r: any) => r.providerId));
+    for (const b of this.builtin()) {
+      if (present.has(b.id)) continue;
+      try { await this.addProvider(b); } catch { /* best effort — never blocks load */ }
     }
     this.syncLocalProviders();
   }
@@ -243,6 +257,7 @@ export class ProviderManager {
         organization: input.organization,
         project: input.project,
         headers: input.headers,
+        keyless: input.keyless === true,
       },
       health: { status: 'UNKNOWN', latencyMs: 0 },
     };

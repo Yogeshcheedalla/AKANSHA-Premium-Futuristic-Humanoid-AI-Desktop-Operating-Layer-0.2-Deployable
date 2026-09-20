@@ -75,7 +75,7 @@ export default function AppClient() {
 
   const renderWorkspace = () => {
     switch (workspace) {
-      case 'command': return <CommandWorkspace />;
+      case 'command': return <CommandWorkspace onNavigate={select} />;
       case 'aicenter': return <AiCenterWorkspace onNavigate={select} />;
       case 'search': return <WebSearchWorkspace />;
       case 'cognitive': return <CognitiveWorkspace />;
@@ -90,7 +90,7 @@ export default function AppClient() {
       case 'security': return <SecurityWorkspace />;
       case 'scorecard': return <ScorecardWorkspace />;
       case 'settings': return <SettingsWorkspace />;
-      default: return <CommandWorkspace />;
+      default: return <CommandWorkspace onNavigate={select} />;
     }
   };
 

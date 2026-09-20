@@ -37,3 +37,22 @@ test('unrelated text never matches', () => {
   assert.equal(mapToAiModePhrase('the office is on fire'), null);
   assert.equal(mapToAiModePhrase(''), null);
 });
+
+import { parseModelFlowCommand } from '@/core/models/AiModeCommands';
+
+test('guided offline flow: show-recommendations phrasings', () => {
+  assert.equal(parseModelFlowCommand('show recommended models'), 'show-recommendations');
+  assert.equal(parseModelFlowCommand('what models can I install'), 'show-recommendations');
+  assert.equal(parseModelFlowCommand('show me the best models for this device'), 'show-recommendations');
+});
+
+test('guided offline flow: install phrasings', () => {
+  assert.equal(parseModelFlowCommand('install recommended model'), 'install-recommended');
+  assert.equal(parseModelFlowCommand('install this'), 'install-recommended');
+  assert.equal(parseModelFlowCommand('yes install it'), 'install-recommended');
+});
+
+test('guided offline flow: unrelated text is neither', () => {
+  assert.equal(parseModelFlowCommand('open notepad'), null);
+  assert.equal(parseModelFlowCommand('what is a model'), null);
+});

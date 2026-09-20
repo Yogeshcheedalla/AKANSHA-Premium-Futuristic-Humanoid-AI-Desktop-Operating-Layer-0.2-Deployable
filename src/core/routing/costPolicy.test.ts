@@ -68,3 +68,10 @@ test('free/local selection excludes paid (planCostRoute orders local first)', ()
   assert.equal(plan.recommended?.providerId, 'local');
   assert.equal(plan.requiresPaidConsent, false);
 });
+
+import { modelCostTier } from './costPolicy';
+
+test('keyless pollinations is FREE at model and provider level', () => {
+  assert.equal(modelCostTier('pollinations', 'openai'), 'free');
+  assert.equal(modelCostTier('pollinations'), 'free');
+});

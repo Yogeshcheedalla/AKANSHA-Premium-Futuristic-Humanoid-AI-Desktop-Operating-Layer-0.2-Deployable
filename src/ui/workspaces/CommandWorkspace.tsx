@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
 import { AkanshaPresence, type AIState } from '../assistant/AkanshaPresence';
 import { OrganicWaveform } from '../assistant/OrganicWaveform';
-import { audioEngine, type VoiceState } from '../voice/AudioEngine';
+import { audioEngine, parseVoiceSessionCommand, type VoiceState } from '../voice/AudioEngine';
 import { Mic, Send, Loader2, Zap } from 'lucide-react';
 
 interface CommandResult {
@@ -20,9 +20,11 @@ interface CommandResult {
   trace?: { candidates: any[]; selected: any; reasons: string[] };
   latencyMs?: number;
   error?: string;
+  action?: { install?: string; navigate?: string };
+  recommendations?: { modelId: string; name: string; sizeGB: number | null; rating: string }[];
 }
 
-export const CommandWorkspace = () => {
+export const CommandWorkspace = ({ onNavigate }: { onNavigate?: (ws: string) => void }) => {
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [state, setState] = useState<AIState>('idle');
@@ -73,7 +75,13 @@ export const CommandWorkspace = () => {
 
   useEffect(() => {
     if (!audioEngine) return;
-    const offFinal = audioEngine.onFinalUtterance((u) => { setPartial(''); sendRef.current(u.transcript, u.utteranceId); });
+    const offFinal = audioEngine.onFinalUtterance((u) => {
+      setPartial('');
+      const cmd = parseVoiceSessionCommand(u.transcript);
+      if (cmd === 'stop') { audioEngine.stop(); return; }
+      if (cmd === 'start') { void (async () => { await audioEngine.start(); audioEngine.startListening(); })(); return; }
+      sendRef.current(u.transcript, u.utteranceId);
+    });
     const offPartial = audioEngine.onPartial((t) => setPartial(t));
     const offState = audioEngine.onState((s) => setVoiceState(s.state));
     return () => { offFinal(); offPartial(); offState(); };
@@ -125,6 +133,24 @@ export const CommandWorkspace = () => {
       const data: CommandResult = await res.json();
       setLast(data);
       setState('working');
+
+      // Guided offline flow: perform the REAL action the server authorized.
+      if (data.action?.navigate && onNavigate) onNavigate(data.action.navigate);
+      if (data.action?.install) {
+        void fetch('/api/ai/install/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ modelId: data.action.install }),
+        })
+          .then(async (r) => {
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j?.accepted) {
+              setMessages((prev) => [...prev, { text: `Could not start the install: ${j?.blocked || j?.error || 'the compatibility/storage gate blocked it'}`, sender: 'akansha' }]);
+            }
+          })
+          .catch((e) => setMessages((prev) => [...prev, { text: `Install request failed: ${e.message}`, sender: 'akansha' }]));
+      }
 
       if (data.status && data.status !== 'COMPLETED') setState('verifying');
 

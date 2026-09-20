@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decideSegment, serverAsrFailure } from '@/ui/voice/AudioEngine';
+import { decideSegment, serverAsrFailure, parseVoiceSessionCommand } from '@/ui/voice/AudioEngine';
 
 test('segment opens exactly when the user starts speaking', () => {
   assert.equal(decideSegment(false, true, 0, { ttsSpeaking: false }), 'start');
@@ -21,10 +21,21 @@ test('silence never opens a segment', () => {
   assert.equal(decideSegment(false, false, 0, { ttsSpeaking: false }), 'hold');
 });
 
-test('missing transcription provider is fatal, transient upstream is retryable', () => {
-  assert.equal(serverAsrFailure('NO_TRANSCRIPTION_PROVIDER', 1), 'fatal');
-  assert.equal(serverAsrFailure('AUTH_FAILED', 1), 'fatal');
-  assert.equal(serverAsrFailure('RATE_LIMITED', 1), 'retry');
-  assert.equal(serverAsrFailure('UNAVAILABLE', 2), 'retry');
-  assert.equal(serverAsrFailure('UNAVAILABLE', 3), 'fatal');
+test('continuous voice never auto-stops on provider/route issues; only a lost mic is fatal', () => {
+  assert.equal(serverAsrFailure('NO_TRANSCRIPTION_PROVIDER', 1), 'retry');
+  assert.equal(serverAsrFailure('AUTH_FAILED', 9), 'retry');
+  assert.equal(serverAsrFailure('RATE_LIMITED', 9), 'retry');
+  assert.equal(serverAsrFailure('UNAVAILABLE', 9), 'retry');
+  assert.equal(serverAsrFailure('MICROPHONE_LOST', 1), 'fatal');
+});
+
+test('spoken "stop the voice mode" / "start the voice mode" are recognized', () => {
+  assert.equal(parseVoiceSessionCommand('stop the voice mode'), 'stop');
+  assert.equal(parseVoiceSessionCommand('Stop listening.'), 'stop');
+  assert.equal(parseVoiceSessionCommand('please turn off voice'), 'stop');
+  assert.equal(parseVoiceSessionCommand('start the voice mode'), 'start');
+  assert.equal(parseVoiceSessionCommand('resume listening'), 'start');
+  // A real task must NOT be treated as a session command.
+  assert.equal(parseVoiceSessionCommand('open notepad'), null);
+  assert.equal(parseVoiceSessionCommand('what is my voice mode'), null);
 });
