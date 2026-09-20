@@ -23,7 +23,7 @@ export interface RoutedCommand {
 }
 
 const BROWSER_WORDS = new Set(['brave', 'chrome', 'google chrome', 'edge', 'microsoft edge', 'firefox', 'mozilla firefox', 'browser']);
-const OPEN = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:open|launch|start|run|go to|navigate to|bring up|fire up)\s+(.+?)\s*[.!?,]*$/i;
+const OPEN = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:open|launch|start|run|go to|navigate to|bring up|fire up|take me to|show me|pull up)\s+(.+?)\s*[.!?,]*$/i;
 const CLOSE = /^\s*(?:please\s+|can you\s+)?(?:close|quit|exit|kill|terminate|stop|shut)\s+(.+?)\s*[.!?,]*$/i;
 const FOCUS = /^\s*(?:please\s+|can you\s+)?(?:focus|activate|raise|foreground|switch to)\s+(.+?)\s*[.!?,]*$/i;
 // "youtube in brave", "gmail in google chrome"

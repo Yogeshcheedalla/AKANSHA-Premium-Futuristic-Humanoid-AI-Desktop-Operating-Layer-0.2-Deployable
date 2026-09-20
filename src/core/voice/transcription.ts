@@ -16,6 +16,8 @@
  */
 import { providerManager } from '../providers/ProviderManager';
 import { credentialVault } from '../security/CredentialVault';
+import { modelCostTier } from '../routing/costPolicy';
+import { localAsrStatus, transcribeWithWhisper } from './localWhisper/whisperRuntime';
 
 export type TranscribeCode =
   | 'OK'
@@ -81,7 +83,10 @@ export function listCandidates(records: Array<{
       out.push({ providerId: r.providerId, name: r.name, kind: 'openai-audio', baseUrl: base, credentialRef: '', model: model || fallbackModel });
     }
   }
-  return out;
+  // FREE-tier ASR providers first; a paid provider (e.g. a zero-credit OpenAI) is
+  // never the permanent first choice.
+  const tierRank = (c: TranscriptionCandidate) => (modelCostTier(c.providerId, c.model) === 'paid' ? 1 : 0);
+  return out.sort((a, b) => tierRank(a) - tierRank(b));
 }
 
 function httpCode(status: number): TranscribeCode {
@@ -140,6 +145,28 @@ async function callCandidate(c: TranscriptionCandidate, key: string, audio: Buff
  */
 export async function transcribeAudio(audio: Buffer, mime: string, opts: { timeoutMs?: number } = {}): Promise<TranscriptionResult> {
   if (!audio || audio.length === 0) return { ok: false, code: 'EMPTY_AUDIO', detail: 'No audio bytes received' };
+
+  // 1. LOCAL WHISPER first — but only when it has PASSED a real transcription
+  //    test (READY). Never used merely because a binary exists.
+  if (mime.startsWith('audio/wav') || mime.startsWith('audio/x-wav')) {
+    const status = await localAsrStatus();
+    if (status.state === 'READY' && status.runtime) {
+      try {
+        const { writeFileSync, unlinkSync } = await import('node:fs');
+        const { tmpdir } = await import('node:os');
+        const { join } = await import('node:path');
+        const wav = join(tmpdir(), `akansha-asr-${Date.now()}.wav`);
+        writeFileSync(wav, audio);
+        try {
+          const t0 = Date.now();
+          const { text } = await transcribeWithWhisper(status.runtime, wav);
+          if (text) return { ok: true, code: 'OK', text, providerId: 'local-whisper', model: status.runtime.version, latencyMs: Date.now() - t0 };
+        } finally { try { unlinkSync(wav); } catch { /* ignore */ } }
+      } catch { /* fall through to cloud */ }
+    }
+  }
+
+  // 2. Cloud providers (free-tier first), through the existing fabric + vault.
   const rows = (await providerManager.listRecords()) as unknown as Array<{
     providerId: string; name: string; type: string; baseUrl: string | null;
     enabled: boolean; credentialConfigured: boolean; settings: Record<string, unknown>;

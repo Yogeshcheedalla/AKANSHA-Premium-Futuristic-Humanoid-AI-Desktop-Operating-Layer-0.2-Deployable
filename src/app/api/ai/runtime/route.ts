@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorize } from '@/core/auth/guard';
 import { providerBootstrap } from '@/core/providers/providerBootstrap';
+import { systemDimensions } from '@/core/runtime/systemStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     await providerBootstrap.run(url.searchParams.get('refresh') === '1');
     const snapshot = providerBootstrap.currentView()!;
-    return NextResponse.json({ ok: true, ...snapshot });
+    const dimensions = await systemDimensions(snapshot);
+    return NextResponse.json({ ok: true, dimensions, ...snapshot });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'runtime status failed' }, { status: 500 });
   }
