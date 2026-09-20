@@ -115,7 +115,7 @@ export class ProviderManager {
         isDefault: cfg.id === 'experiential',
         fallbackPriority: cfg.fallbackPriority ?? 100,
         capabilities: {},
-        settings: { temperature: 0.7, timeoutMs: 60000 },
+        settings: { temperature: 0.7, timeoutMs: 60000, keyless: cfg.keyless === true },
         health: { status: 'UNKNOWN', latencyMs: 0 },
       }));
       if (isDbConfigured) {
@@ -160,11 +160,15 @@ export class ProviderManager {
     // removed or that predate a new default like 'pollinations'). This is the
     // documented "a removed built-in reverts to its seed" behavior, made true even
     // when the store is non-empty. Custom (non-built-in) rows the user removed
-    // stay gone; a disabled built-in already present is left as-is.
-    const present = new Set(rows.map((r: any) => r.providerId));
+    // stay gone; a disabled built-in already present is left as-is. A keyless
+    // built-in whose stored row predates the keyless flag is re-upgraded.
+    const byId = new Map(rows.map((r: any) => [r.providerId, r]));
     for (const b of this.builtin()) {
-      if (present.has(b.id)) continue;
-      try { await this.addProvider(b); } catch { /* best effort — never blocks load */ }
+      const existing = byId.get(b.id);
+      const needsKeylessUpgrade = b.keyless === true && existing && (existing.settings?.keyless !== true);
+      if (!existing || needsKeylessUpgrade) {
+        try { await this.addProvider(b); } catch { /* best effort — never blocks load */ }
+      }
     }
     this.syncLocalProviders();
   }
