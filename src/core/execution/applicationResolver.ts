@@ -17,6 +17,7 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
 import { resolveApp, expandEnv, type AppSpec } from './appRegistry';
 
 const execFileAsync = promisify(execFile);
@@ -107,9 +108,11 @@ export async function resolveApplication(query: string, opts: { browserOnly?: bo
   const q = norm(query || '');
   if (!q) return null;
 
-  // 1. Curated registry alias (system apps + browsers) — highest trust.
+  // 1. Curated registry alias — but ONLY if the exe actually exists. A stale
+  //    curated path (e.g. Brave installed elsewhere) must fall through to real
+  //    discovery rather than return a non-existent executable.
   const spec: AppSpec | null = resolveApp(q);
-  if (spec) {
+  if (spec && existsSync(expandEnv(spec.exe))) {
     const exe = expandEnv(spec.exe);
     return {
       canonicalName: spec.aliases[0], executable: exe, arguments: [],
