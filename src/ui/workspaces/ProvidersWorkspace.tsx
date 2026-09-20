@@ -256,6 +256,153 @@ export const ProvidersWorkspace = () => {
           })}
         </div>
       )}
+      <ProviderCatalog onChanged={load} />
     </div>
   );
 };
+
+/* ── Free-tier provider catalog (sourced from mnfst/awesome-free-llm-apis) ─ */
+
+interface CatalogProvider {
+  providerId: string; displayName: string; category: string; baseUrl: string; apiKeyUrl?: string;
+  openAiCompatible?: boolean; requiresKey: boolean | 'unknown'; freeTier?: string; restrictions?: string[];
+  models: { name: string; context?: string; modality?: string; rateLimit?: string }[];
+  sourceUrl: string; status: string; connected: boolean; providerRecordId: string | null;
+}
+
+function ProviderCatalog({ onChanged }: { onChanged: () => Promise<void> | void }) {
+  const [items, setItems] = useState<CatalogProvider[] | null>(null);
+  const [meta, setMeta] = useState<{ source: string; sourceRevision: string; checkedAt: number; attribution: string } | null>(null);
+  const [q, setQ] = useState('');
+  const [onlyCompatible, setOnlyCompatible] = useState(false);
+  const [onlyFreeNoKey, setOnlyFreeNoKey] = useState(false);
+  const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const loadCat = useCallback(async () => {
+    try {
+      const r = await fetch('/api/providers/catalog', { credentials: 'same-origin' });
+      const d = await r.json();
+      if (d.ok) { setItems(d.providers); setMeta({ source: d.source, sourceRevision: d.sourceRevision, checkedAt: d.checkedAt, attribution: d.attribution }); }
+    } catch { setItems([]); }
+  }, []);
+  useEffect(() => { const t = setTimeout(loadCat, 0); return () => clearTimeout(t); }, [loadCat]);
+
+  const connect = async (p: CatalogProvider) => {
+    const key = (keyDraft[p.providerId] || '').trim();
+    if (p.requiresKey === true && !key) { setMsg((m) => ({ ...m, [p.providerId]: 'Enter this provider’s API key first (get it from its official key page).' })); return; }
+    setBusy(p.providerId);
+    setMsg((m) => ({ ...m, [p.providerId]: '' }));
+    try {
+      const add = await fetch('/api/providers', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ providerId: p.providerId, name: p.displayName, type: 'openai-compatible', baseUrl: p.baseUrl, apiKey: key || undefined, defaultModel: p.models[0]?.name }),
+      });
+      const ad = await add.json();
+      if (!add.ok || ad.ok === false) { setMsg((m) => ({ ...m, [p.providerId]: ad.error || `Could not save (HTTP ${add.status})` })); return; }
+      const t = await fetch('/api/providers/test', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ providerId: p.providerId }) });
+      const td = await t.json();
+      setMsg((m) => ({ ...m, [p.providerId]: td?.health?.state === 'AVAILABLE' ? 'Connected and verified with a real request.' : `Saved. Live check: ${td?.health?.state || 'unknown'}${td?.health?.detail ? ` — ${td.health.detail}` : ''}` }));
+      await onChanged(); await loadCat();
+    } catch (e: any) {
+      setMsg((m) => ({ ...m, [p.providerId]: 'Connect failed: ' + (e?.message || e) }));
+    } finally { setBusy(null); }
+  };
+
+  const disconnect = async (p: CatalogProvider) => {
+    if (!p.providerRecordId) return;
+    setBusy(p.providerId);
+    try { await fetch(`/api/providers/${p.providerRecordId}`, { method: 'DELETE', credentials: 'same-origin' }); await onChanged(); await loadCat(); } finally { setBusy(null); }
+  };
+
+  const test = async (p: CatalogProvider) => {
+    if (!p.providerRecordId) return;
+    setBusy(p.providerId);
+    try {
+      const t = await fetch('/api/providers/test', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ providerId: p.providerRecordId }) });
+      const td = await t.json();
+      setMsg((m) => ({ ...m, [p.providerId]: `Health: ${td?.health?.state || 'unknown'}${td?.health?.detail ? ` — ${td.health.detail}` : ''}` }));
+      await loadCat();
+    } finally { setBusy(null); }
+  };
+
+  const STATUS_STYLE: Record<string, string> = {
+    AVAILABLE: 'bg-emerald-400/10 text-emerald-300', READY: 'bg-emerald-400/10 text-emerald-300',
+    AUTH_REQUIRED: 'bg-amber-400/10 text-amber-300', AUTH_FAILED: 'bg-rose-400/10 text-rose-300',
+    RATE_LIMITED: 'bg-amber-400/10 text-amber-300', UNAVAILABLE: 'bg-rose-400/10 text-rose-300',
+    NOT_CONFIGURED: 'bg-white/5 text-white/40', CONFIGURED: 'bg-cyan-400/10 text-cyan-200', DISABLED: 'bg-white/5 text-white/30',
+  };
+
+  const filtered = (items || []).filter((p) => {
+    if (q && !(`${p.displayName} ${p.providerId} ${p.models.map((m) => m.name).join(' ')}`.toLowerCase().includes(q.toLowerCase()))) return false;
+    if (onlyCompatible && p.openAiCompatible !== true) return false;
+    if (onlyFreeNoKey && p.requiresKey !== false) return false;
+    return true;
+  });
+
+  return (
+    <div className="mt-10">
+      <div className="flex items-end justify-between gap-3 mb-1">
+        <div>
+          <h2 className="text-lg font-light text-white/85 tracking-tight">Free-tier provider catalog</h2>
+          <p className="text-[11px] text-white/35">Provider metadata normalized from <span className="text-white/55">{meta?.source || 'mnfst/awesome-free-llm-apis'}</span> @ <span className="font-mono">{meta?.sourceRevision ? meta.sourceRevision.slice(0, 8) : '…'}</span>{meta?.checkedAt ? <> · last verified {new Date(meta.checkedAt).toLocaleDateString()}</> : null}. “Free tier” never means unlimited — documented limits are shown on each card.</p>
+        </div>
+      </div>
+      <div className="flex gap-2 my-3">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search providers or models…"
+          className="flex-1 rounded-xl bg-white/5 border border-white/10 px-3.5 py-2 text-sm text-white/90 placeholder:text-white/25 outline-none focus:border-cyan-400/40" />
+        <button onClick={() => setOnlyCompatible((v) => !v)} className={`px-3 py-2 rounded-xl text-[11px] border transition-colors ${onlyCompatible ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200' : 'border-white/10 text-white/45 hover:text-white/70'}`}>OpenAI-compatible</button>
+        <button onClick={() => setOnlyFreeNoKey((v) => !v)} className={`px-3 py-2 rounded-xl text-[11px] border transition-colors ${onlyFreeNoKey ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200' : 'border-white/10 text-white/45 hover:text-white/70'}`}>No key needed</button>
+      </div>
+      {!items ? <div className="text-white/30 text-sm animate-pulse">Loading catalog…</div> : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filtered.map((p) => (
+            <GlassSurface key={p.providerId} className="p-5 rounded-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-medium text-white/90">{p.displayName}</h3>
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] uppercase tracking-wider ${STATUS_STYLE[p.status] || 'bg-white/5 text-white/40'}`}>{p.status}</span>
+                  </div>
+                  <div className="text-[10px] text-white/30 mt-1 font-mono truncate">{p.baseUrl}</div>
+                </div>
+                <span className="shrink-0 text-[10px] text-white/35 border border-white/10 rounded-md px-2 py-0.5">{p.models.length} listed{p.models.length >= 5 ? '+' : ''}</span>
+              </div>
+              {p.freeTier && <div className="text-[11px] text-cyan-200/70 mt-2">{p.freeTier}</div>}
+              {p.restrictions?.map((r) => <div key={r} className="text-[10px] text-amber-300/70 mt-1">⚠ {r}</div>)}
+              {p.openAiCompatible !== true && (
+                <div className="text-[10px] text-white/35 mt-2">OpenAI compatibility not documented by the source — connect manually via “Add Provider” above if you know it speaks the OpenAI format.</div>
+              )}
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {p.models.slice(0, 3).map((m) => <span key={m.name} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] text-white/45 font-mono truncate max-w-[220px]">{m.name}{m.rateLimit ? ` · ${m.rateLimit}` : ''}</span>)}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                {!p.connected && p.openAiCompatible === true && (
+                  <>
+                    <input type="password" value={keyDraft[p.providerId] || ''} onChange={(e) => setKeyDraft((d) => ({ ...d, [p.providerId]: e.target.value }))}
+                      placeholder={p.requiresKey === false ? 'No key required' : 'API key (stored encrypted, never shown again)'}
+                      className="flex-1 min-w-0 rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/85 placeholder:text-white/25 outline-none focus:border-cyan-400/40" />
+                    <button onClick={() => connect(p)} disabled={busy === p.providerId}
+                      className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-medium border border-cyan-400/25 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-40 transition-colors">
+                      {busy === p.providerId ? <Loader2 size={12} className="animate-spin" /> : <Key size={12} />} Connect
+                    </button>
+                  </>
+                )}
+                {p.connected && (
+                  <>
+                    <button onClick={() => test(p)} disabled={busy === p.providerId} className="px-3 py-2 rounded-xl text-[11px] border border-white/10 text-white/60 hover:text-white/85 transition-colors">Test</button>
+                    <button onClick={() => disconnect(p)} disabled={busy === p.providerId} className="px-3 py-2 rounded-xl text-[11px] border border-rose-400/25 text-rose-200/80 hover:bg-rose-500/10 transition-colors">Disconnect</button>
+                  </>
+                )}
+                {p.apiKeyUrl && <a href={p.apiKeyUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-white/35 hover:text-cyan-200 transition-colors ml-auto">Get key ↗</a>}
+              </div>
+              {msg[p.providerId] && <div className="text-[10px] text-amber-300/85 mt-2">{msg[p.providerId]}</div>}
+            </GlassSurface>
+          ))}
+        </div>
+      )}
+      {meta && <div className="text-[10px] text-white/20 mt-3">{meta.attribution}</div>}
+    </div>
+  );
+}

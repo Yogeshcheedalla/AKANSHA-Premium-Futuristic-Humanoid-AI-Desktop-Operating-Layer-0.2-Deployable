@@ -13,15 +13,16 @@ export interface WorkspaceMeta {
 
 /** Ordered exactly as shown top→bottom in the left dock. */
 export const WORKSPACES: WorkspaceMeta[] = [
-  { id: 'command', label: 'Command' },
+  { id: 'command', label: 'Home' },
+  { id: 'aicenter', label: 'AI Center' },
+  { id: 'modelcenter', label: 'Models' },
+  { id: 'providers', label: 'Providers' },
   { id: 'search', label: 'Web Search' },
   { id: 'cognitive', label: 'Cognitive Layer' },
   { id: 'missions', label: 'Missions' },
   { id: 'repositories', label: 'Repository Fabric' },
   { id: 'agents', label: 'Agents' },
   { id: 'integrations', label: 'Capability Fabric' },
-  { id: 'providers', label: 'AI Providers' },
-  { id: 'modelcenter', label: 'Model Center' },
   { id: 'connectors', label: 'Connectors' },
   { id: 'memory', label: 'Memory' },
   { id: 'security', label: 'Security' },

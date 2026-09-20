@@ -18,6 +18,7 @@ import { ProvidersWorkspace } from '@/ui/workspaces/ProvidersWorkspace';
 import { ConnectorsWorkspace } from '@/ui/workspaces/ConnectorsWorkspace';
 import { RepositoriesWorkspace } from '@/ui/workspaces/RepositoriesWorkspace';
 import { ModelCenter } from '@/ui/workspaces/ModelCenterWorkspace';
+import { AiCenterWorkspace } from '@/ui/workspaces/AiCenterWorkspace';
 import { WebSearchWorkspace } from '@/ui/workspaces/WebSearchWorkspace';
 import { FirstRunOnboarding, ONBOARD_FLAG } from '@/ui/onboarding/FirstRunOnboarding';
 import { VoiceControl } from '@/ui/voice/VoiceControl';
@@ -45,6 +46,7 @@ export default function AppClient() {
   const renderWorkspace = () => {
     switch (workspace) {
       case 'command': return <CommandWorkspace />;
+      case 'aicenter': return <AiCenterWorkspace onNavigate={select} />;
       case 'search': return <WebSearchWorkspace />;
       case 'cognitive': return <CognitiveWorkspace />;
       case 'missions': return <MissionsWorkspace />;
