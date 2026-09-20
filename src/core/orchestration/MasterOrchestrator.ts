@@ -483,8 +483,9 @@ export class MasterOrchestrator {
         mission.status = 'FAILED';
         mission.context.failureClass = e?.message?.includes('No AI provider') ? 'AI_PROVIDER_OFFLINE' : 'MODEL_UNAVAILABLE';
         mission.context.reply =
-          'I have no reachable AI provider right now, so I could not answer. Add or enable a provider ' +
-          '(Ollama, OpenAI, Gemini, or any OpenAI-compatible endpoint) in Settings → AI Providers.';
+          'Akansha is running, but no verified AI inference route is available for this request. ' +
+          'Open AI Center → Enable Free AI, or connect a free provider (Gemini, Groq, OpenRouter) in Providers — ' +
+          'I will not silently use a paid route or pretend an answer exists.';
         mission.observations.push(`Generation failed: ${e?.message || 'unknown error'}`);
         this.emit({ type: 'MISSION_FAILED', missionId, payload: { error: e?.message } });
       }

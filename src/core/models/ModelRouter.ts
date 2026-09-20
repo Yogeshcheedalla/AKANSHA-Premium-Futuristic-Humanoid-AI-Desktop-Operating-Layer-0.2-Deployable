@@ -9,7 +9,7 @@ import type {
   HealthStatus,
 } from './ModelProvider';
 import { eventBus } from '../events/EventBus';
-import { freeFirstCompare, allRoutesPaid } from '../routing/costPolicy';
+import { allRoutesPaid, modelCostTier, COST_ORDER, type CostTier } from '../routing/costPolicy';
 
 export interface RoutingCandidate {
   providerId: string;
@@ -17,6 +17,7 @@ export interface RoutingCandidate {
   score: number;
   reasons: string[];
   latencyEstimateMs: number;
+  costTier: CostTier;
 }
 
 export interface RoutingDecision {
@@ -189,6 +190,7 @@ export class ModelRouter {
         score: Math.max(0, Math.round(score)),
         reasons,
         latencyEstimateMs: model.latencyMs ?? (isLocal ? 400 : 900),
+        costTier: modelCostTier(provider.id, model.id, { isLocal }),
       });
     }
 
@@ -216,16 +218,19 @@ export class ModelRouter {
     }
 
     const candidates: RoutingCandidate[] = [];
+    // HARD eligibility gate from LIVE evidence (never from the catalog): a
+    // provider whose cached health says auth-rejected / rate-limited / down is
+    // not offered as a route at all until a fresh probe proves otherwise.
+    const { providerBootstrap } = await import('../providers/providerBootstrap');
     for (const provider of providerManager.getAll()) {
+      if (!providerBootstrap.isEligible(provider.id)) continue;
       const models = modelRegistry.listByProvider(provider.id);
       candidates.push(...this.scoreProvider(provider, need, models, contextSize));
     }
 
-    if (privacySensitive) {
-      candidates.sort((a, b) => b.score - a.score || freeFirstCompare(a, b));
-    } else {
-      candidates.sort((a, b) => b.score - a.score || freeFirstCompare(a, b));
-    }
+    // Ordering = the product's routing hierarchy itself: LOCAL → FREE → PAID,
+    // score breaks ties inside a tier. (Privacy handling unchanged.)
+    candidates.sort((a, b) => COST_ORDER[a.costTier] - COST_ORDER[b.costTier] || b.score - a.score);
     return candidates;
   }
 
@@ -337,6 +342,9 @@ export class ModelRouter {
           outcome: 'failure',
           error: e?.message || 'unknown error',
         });
+        // Self-heal: demote the route from live evidence (auth/billing/rate/down),
+        // so the NEXT request never re-tries a known-dead provider first.
+        { const { providerBootstrap } = await import('../providers/providerBootstrap'); providerBootstrap.markRouteFailed(candidate.providerId, e?.message || ''); }
         eventBus.emit('recovery.started', 'ModelRouter', {
           from: candidate.providerId,
           reason: e?.message,

@@ -10,20 +10,42 @@ export const COST_ORDER: Record<CostTier, number> = { local: 0, free: 1, paid: 2
 
 export interface CostHint { isLocal?: boolean; freeModel?: boolean; }
 
+/**
+ * Model-aware cost tier.
+ *
+ * CRITICAL correction (verified against OpenRouter's own docs): the OpenRouter
+ * PROVIDER is not "free". Only the dedicated Free Models Router
+ * (`openrouter/free`) and explicitly free variants (`...:free`) are zero-cost;
+ * `openrouter/auto` and normal metered models CAN select paid models and must
+ * go through paid consent. Provider-level heuristics remain only as a fallback
+ * when no model id is known.
+ */
+export function modelCostTier(providerId: string, modelId?: string, hint: CostHint = {}): CostTier {
+  if (hint.isLocal || providerId === 'local' || providerId === 'ollama') return 'local';
+  const m = (modelId || '').toLowerCase();
+  if (hint.freeModel || m === 'openrouter/free' || m.endsWith(':free') || m.includes('/free')) return 'free';
+  if (m) return 'paid'; // a known model that is not free-flagged is treated as paid-capable
+  // No model id available: fall back to the conservative provider heuristic
+  // (OpenRouter hosts a free router, so it MAY be free — but never claim it).
+  return providerId === 'openrouter' ? 'free' : 'paid';
+}
+
 /** Classify a provider/model's cost tier. Provider-level heuristic + per-model override. */
 export function costTierFor(providerId: string, hint: CostHint = {}): CostTier {
-  if (hint.isLocal || providerId === 'local' || providerId === 'ollama') return 'local';
-  if (hint.freeModel || providerId === 'openrouter') return 'free'; // OpenRouter exposes a free router/tier
-  return 'paid';
+  return modelCostTier(providerId, undefined, hint);
 }
 
 export function costRank(providerId: string, hint?: CostHint): number {
   return COST_ORDER[costTierFor(providerId, hint)];
 }
 
+export function modelCostRank(providerId: string, modelId?: string, hint?: CostHint): number {
+  return COST_ORDER[modelCostTier(providerId, modelId, hint)];
+}
+
 /** Stable comparator: cheaper first (used as a score tiebreaker in routing). */
-export function freeFirstCompare(a: { providerId: string }, b: { providerId: string }): number {
-  return costRank(a.providerId) - costRank(b.providerId);
+export function freeFirstCompare(a: { providerId: string; modelId?: string }, b: { providerId: string; modelId?: string }): number {
+  return modelCostRank(a.providerId, a.modelId) - modelCostRank(b.providerId, b.modelId);
 }
 
 export interface CostPlan<T extends { providerId: string }> {
@@ -34,10 +56,10 @@ export interface CostPlan<T extends { providerId: string }> {
 }
 
 /** Order candidates cheapest-first and decide whether paid consent is required. */
-export function planCostRoute<T extends { providerId: string }>(candidates: T[]): CostPlan<T> {
-  const ordered = [...candidates].sort((a, b) => costRank(a.providerId) - costRank(b.providerId));
+export function planCostRoute<T extends { providerId: string; modelId?: string }>(candidates: T[]): CostPlan<T> {
+  const ordered = [...candidates].sort((a, b) => modelCostRank(a.providerId, a.modelId) - modelCostRank(b.providerId, b.modelId));
   const recommended = ordered[0];
-  const tier = recommended ? costTierFor(recommended.providerId) : null;
+  const tier = recommended ? modelCostTier(recommended.providerId, recommended.modelId) : null;
   return {
     ordered,
     recommended,
@@ -53,8 +75,8 @@ export function planCostRoute<T extends { providerId: string }>(candidates: T[])
 }
 
 /** True only when there are candidates and NONE is a free/local route. */
-export function allRoutesPaid(candidates: { providerId: string }[]): boolean {
-  return candidates.length > 0 && candidates.every((c) => costTierFor(c.providerId) === 'paid');
+export function allRoutesPaid(candidates: { providerId: string; modelId?: string }[]): boolean {
+  return candidates.length > 0 && candidates.every((c) => modelCostTier(c.providerId, c.modelId) === 'paid');
 }
 
 export interface PaidConsentPrompt {

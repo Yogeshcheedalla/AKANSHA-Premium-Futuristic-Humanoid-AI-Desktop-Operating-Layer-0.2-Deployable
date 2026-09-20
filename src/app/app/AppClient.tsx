@@ -33,15 +33,45 @@ import { Zap, Download, ArrowLeft } from 'lucide-react';
  */
 export default function AppClient() {
   const { workspace, select } = useWorkspaceRoute();
-  const [systemState] = useState<'online' | 'offline' | 'degraded'>('online');
   const [currentMission] = useState('No active missions');
   const [onboard, setOnboard] = useState(false);
+  // The REAL AI inference status — never hard-coded. SYSTEM-online and
+  // AI-inference-ready are different facts; the header must show the second one.
+  const [runtime, setRuntime] = useState<{ status: string; activeRoute: { providerId: string; modelId: string; costTier: string } | null } | null>(null);
 
   useEffect(() => {
     void Promise.resolve().then(() => {
       try { if (!localStorage.getItem(ONBOARD_FLAG)) setOnboard(true); } catch { /* SSR/no-storage: skip */ }
     });
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      fetch('/api/ai/runtime', { credentials: 'same-origin' })
+        .then((r) => r.json())
+        .then((j) => { if (alive && j?.ok) setRuntime({ status: j.status, activeRoute: j.activeRoute }); })
+        .catch(() => { /* keep last known truth */ });
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const RUNTIME_CHIP: Record<string, { label: string; cls: string }> = {
+    LOCAL_READY: { label: 'LOCAL AI READY', cls: 'text-cyan-300' },
+    FREE_ONLINE_READY: { label: 'FREE AI READY', cls: 'text-emerald-300' },
+    ONLINE_READY: { label: 'ONLINE READY', cls: 'text-cyan-300' },
+    PAID_ONLY: { label: 'PAID AI ONLY', cls: 'text-amber-400' },
+    AUTH_REQUIRED: { label: 'AUTHORIZATION NEEDED', cls: 'text-amber-400' },
+    DEGRADED: { label: 'AI DEGRADED', cls: 'text-amber-400' },
+    NO_PROVIDER: { label: 'NO AI ROUTE', cls: 'text-rose-400' },
+  };
+  const chip = runtime ? (RUNTIME_CHIP[runtime.status] || RUNTIME_CHIP.NO_PROVIDER) : { label: 'CHECKING…', cls: 'text-white/40' };
+  const routeText = runtime?.activeRoute
+    ? `Route: ${runtime.activeRoute.providerId} · ${String(runtime.activeRoute.costTier).toUpperCase()} · ${runtime.activeRoute.modelId}`
+    : runtime && runtime.status === 'LOCAL_READY' ? 'Route: local model'
+    : 'Open AI Center to enable free AI';
 
   const renderWorkspace = () => {
     switch (workspace) {
@@ -84,12 +114,12 @@ export default function AppClient() {
             <ArrowLeft size={13} />
             <span>Home</span>
           </a>
-          <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_10px_rgba(0,240,255,0.5)]" />
-          <span className={`text-[10px] uppercase tracking-[0.15em] font-medium ${systemState === 'online' ? 'text-cyan-300' : systemState === 'degraded' ? 'text-amber-400' : 'text-rose-400'}`}>
-            {systemState}
+          <div className={`w-2.5 h-2.5 rounded-full animate-pulse shadow-[0_0_10px_rgba(0,240,255,0.5)] ${runtime && (runtime.status === 'NO_PROVIDER' || runtime.status === 'DEGRADED') ? 'bg-rose-400' : runtime && runtime.status === 'AUTH_REQUIRED' ? 'bg-amber-400' : runtime && runtime.status === 'LOCAL_READY' ? 'bg-cyan-400' : 'bg-emerald-400'}`} />
+          <span className={`text-[10px] uppercase tracking-[0.15em] font-medium ${chip.cls}`}>
+            {chip.label}
           </span>
           <span className="text-[10px] text-white/20 hidden sm:inline">|</span>
-          <span className="text-[10px] text-white/30 hidden sm:inline">Multi-Provider Runtime · Ollama · Gemini · OpenAI · Custom</span>
+          <span className="text-[10px] text-white/30 hidden sm:inline">{routeText}</span>
         </div>
 
         <div className="flex items-center gap-4 pointer-events-auto">

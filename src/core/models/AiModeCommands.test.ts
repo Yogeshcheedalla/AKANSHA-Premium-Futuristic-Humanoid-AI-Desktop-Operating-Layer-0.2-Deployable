@@ -20,6 +20,12 @@ test('both/auto map through', () => {
   assert.deepEqual(mapToAiModePhrase('use auto'), { mode: 'auto' });
 });
 
+test('local/free AI phrasings resolve deterministically without a model', () => {
+  assert.deepEqual(mapToAiModePhrase('use local AI'), { mode: 'offline' });
+  assert.deepEqual(mapToAiModePhrase('switch to local'), { mode: 'offline' });
+  assert.deepEqual(mapToAiModePhrase('use free AI'), { mode: 'cloud' });
+});
+
 test('questions ABOUT modes are never treated as commands', () => {
   assert.equal(mapToAiModePhrase('what is offline mode'), null);
   assert.equal(mapToAiModePhrase('how do I enable offline mode?'), null);

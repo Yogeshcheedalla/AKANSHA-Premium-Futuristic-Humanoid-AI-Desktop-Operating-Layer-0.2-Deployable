@@ -101,6 +101,9 @@ export async function POST(request: Request) {
 
   try {
     await integrationManager.initialize();
+    // Authoritative bootstrap: loads providers, discovers models, probes health
+    // ONCE (cached afterwards). Every route below sees live evidence.
+    { const { providerBootstrap } = await import('@/core/providers/providerBootstrap'); await providerBootstrap.run(); }
 
     const body = await request.json();
     const text: string = (body?.text || body?.message || '').toString().trim();
@@ -203,7 +206,9 @@ export async function POST(request: Request) {
               sel = { providerId: gen.response.provider, modelId: gen.response.model };
             }
           } catch {
-            /* no provider — keep the honest canned greeting */
+            // Honest: the SYSTEM is running but no AI inference route answered.
+            reply = 'Akansha is running, but no verified AI inference route is available right now. Open AI Center → Enable Free AI (one free provider key makes conversation work), or install a local model from Models. I will not pretend a model answered when none did.';
+            usedModel = false;
           }
           return {
             ok: true,
@@ -239,6 +244,7 @@ export async function POST(request: Request) {
             modelId: c.modelId,
             score: c.score,
             reasons: c.reasons,
+            costTier: c.costTier,
           })),
           selected: decision ? { providerId: decision.provider, modelId: decision.modelId } : null,
           reasons: decision

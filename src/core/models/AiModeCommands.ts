@@ -10,8 +10,8 @@ import type { AiMode } from './AiMode';
 
 export interface ModePhrase { mode: AiMode }
 
-const OFFLINE = /^\s*(?:please\s+|can you\s+)?(?:enable|switch to|set|use|turn on|go(?:\s+to)?|activate)\s+(?:the\s+)?(?:fully\s+)?offline(?:\s+ai)?(?:\s+mode)?\s*[.!?,]*$/i;
-const ONLINE = /^\s*(?:please\s+|can you\s+)?(?:enable|switch to|set|use|turn on|go(?:\s+to)?|activate)\s+(?:the\s+)?(?:online|cloud)(?:\s+ai)?(?:\s+mode)?\s*[.!?,]*$/i;
+const OFFLINE = /^\s*(?:please\s+|can you\s+)?(?:enable|switch to|set|use|turn on|go(?:\s+to)?|activate)\s+(?:the\s+)?(?:fully\s+)?(?:offline(?:\s+ai)?|local(?:\s+ai)?)(?:\s+mode)?\s*[.!?,]*$/i;
+const ONLINE = /^\s*(?:please\s+|can you\s+)?(?:enable|switch to|set|use|turn on|go(?:\s+to)?|activate)\s+(?:the\s+)?(?:online|cloud|free(?:\s+ai)?)(?:\s+mode)?\s*[.!?,]*$/i;
 const BOTH = /^\s*(?:enable|switch to|set|use)\s+both(?:\s+mode)?\s*[.!?,]*$/i;
 const AUTO = /^\s*(?:enable|switch to|set|use)\s+(?:auto|balanced)(?:\s+mode)?\s*[.!?,]*$/i;
 
