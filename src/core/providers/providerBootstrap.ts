@@ -156,16 +156,17 @@ class ProviderBootstrap {
         let health = force ? undefined : this.cachedHealth(row.providerId);
         if (!health) health = p ? await this.probe(p) : (row.enabled ? 'UNKNOWN' : 'UNKNOWN');
         const models = p ? modelRouter.getRegistry().listByProvider(row.providerId) : [];
-        // Cost tier of the provider's BEST free model if any, else its default.
-        const freeModel = models.find((m) => modelCostTier(row.providerId, m.id) === 'free');
-        const bestModel = freeModel?.id || row.defaultModel || models[0]?.id;
+        const chatModels = models.filter((m) => m.capabilities?.chat);
+        // Cost tier of the provider's BEST free chat model if any, else its default.
+        const freeModel = chatModels.find((m) => modelCostTier(row.providerId, m.id) === 'free');
+        const bestModel = freeModel?.id || (row.defaultModel && chatModels.some((m) => m.id === row.defaultModel) ? row.defaultModel : chatModels[0]?.id);
         routes.push({
           providerId: row.providerId,
           name: row.name,
           enabled: row.enabled,
           credentialConfigured: row.credentialConfigured,
           health,
-          modelCount: models.length,
+          modelCount: chatModels.length,
           costTier: bestModel ? modelCostTier(row.providerId, bestModel) : 'unknown',
           bestModel,
           lastChecked: this.cache.get(row.providerId)?.ts ?? 0,
