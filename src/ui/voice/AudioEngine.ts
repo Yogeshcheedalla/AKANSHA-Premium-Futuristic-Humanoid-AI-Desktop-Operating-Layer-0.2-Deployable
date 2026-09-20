@@ -32,6 +32,7 @@ export type VoiceError =
   | 'MICROPHONE_PERMISSION_DENIED'
   | 'AUDIO_DEVICE_CHANGED'
   | 'ASR_UNAVAILABLE'
+  | 'ASR_PROVIDER_MISSING'
   | 'ASR_TIMEOUT'
   | 'ASR_LOW_CONFIDENCE'
   | 'TTS_UNAVAILABLE'
@@ -39,6 +40,39 @@ export type VoiceError =
   | 'PLAYBACK_ERROR'
   | 'DEVICE_BUSY'
   | 'MODEL_UNAVAILABLE';
+
+export type AsrMode = 'none' | 'web' | 'server';
+
+/**
+ * Continuous server-ASR segment gating (pure, unit-testable).
+ * The packaged desktop app has no system speech service, so we record short
+ * speech segments with MediaRecorder on the SAME microphone stream and send
+ * each finished segment to /api/voice/transcribe. A segment starts when the
+ * user begins speaking and stops after a sustained silence gap — this keeps
+ * the session CONTINUOUS: the loop resumes listening after every command.
+ * While Akansha herself is speaking (ttsSpeaking) we never open a new segment,
+ * so her own voice can never echo back as a command.
+ */
+export function decideSegment(
+  recording: boolean,
+  speaking: boolean,
+  silenceMs: number,
+  opts: { ttsSpeaking: boolean; silenceStopMs?: number }
+): 'start' | 'stop' | 'hold' {
+  const stopAfter = opts.silenceStopMs ?? 700;
+  if (recording) {
+    if (opts.ttsSpeaking) return 'hold'; // never cut/extend mid-answer
+    return silenceMs >= stopAfter ? 'stop' : 'hold';
+  }
+  if (opts.ttsSpeaking) return 'hold';
+  return speaking ? 'start' : 'hold';
+}
+
+/** Consecutive transcription failures before the session honestly gives up. */
+export function serverAsrFailure(code: string, consecutive: number): 'fatal' | 'retry' {
+  if (code === 'NO_TRANSCRIPTION_PROVIDER' || code === 'AUTH_FAILED') return 'fatal';
+  return consecutive >= 3 ? 'fatal' : 'retry';
+}
 
 const ALLOWED: Record<VoiceState, VoiceState[]> = {
   MUTED: ['STANDBY'],
@@ -61,13 +95,15 @@ export interface FinalUtterance {
   transcript: string;
 }
 
-type StateListener = (s: { state: VoiceState; error?: VoiceError }) => void;
+type StateListener = (s: { state: VoiceState; error?: VoiceError; asrMode?: AsrMode; detail?: string }) => void;
 type UtteranceListener = (u: FinalUtterance) => void;
 type PartialListener = (text: string) => void;
 
 export class AudioEngine {
   private state: VoiceState = 'STANDBY';
   private error?: VoiceError;
+  private detail?: string;
+  private asrMode: AsrMode = 'none';
   private spokenResponseIds = new Set<string>();
   private speaking = false;
   private stateListeners = new Set<StateListener>();
@@ -81,6 +117,13 @@ export class AudioEngine {
   private vadTimer: ReturnType<typeof setInterval> | null = null;
   private recognition: any = null;
   private currentResponseId: string | null = null;
+
+  // Continuous server-ASR (packaged desktop: no system speech service).
+  private serverAsrActive = false;
+  private recorder: MediaRecorder | null = null;
+  private segmentStartedAt = 0;
+  private lastVoiceAt = 0;
+  private asrFailures = 0;
 
   // ── Pure, testable logic (no DOM) ────────────────────────────────────
   canTransition(to: VoiceState): boolean {
@@ -120,8 +163,13 @@ export class AudioEngine {
     return true;
   }
 
-  getState(): { state: VoiceState; error?: VoiceError } {
-    return { state: this.state, error: this.error };
+  getState(): { state: VoiceState; error?: VoiceError; asrMode?: AsrMode; detail?: string } {
+    return { state: this.state, error: this.error, asrMode: this.asrMode, detail: this.detail };
+  }
+
+  /** Which ASR path the live session is using ('' = no session). */
+  getAsrMode(): AsrMode {
+    return this.asrMode;
   }
 
   capabilities(): VoiceCapabilities {
@@ -138,7 +186,7 @@ export class AudioEngine {
   onFinalUtterance(cb: UtteranceListener) { this.utteranceListeners.add(cb); return () => this.utteranceListeners.delete(cb); }
   onPartial(cb: PartialListener) { this.partialListeners.add(cb); return () => this.partialListeners.delete(cb); }
 
-  private emitState() { this.stateListeners.forEach((l) => l({ state: this.state, error: this.error })); }
+  private emitState() { this.stateListeners.forEach((l) => l({ state: this.state, error: this.error, asrMode: this.asrMode, detail: this.detail })); }
 
   // ── Real browser capture + VAD ───────────────────────────────────────
   async start(): Promise<{ ok: boolean; error?: VoiceError }> {
@@ -168,8 +216,19 @@ export class AudioEngine {
         for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
         const rms = Math.sqrt(sum / data.length);
         const speaking = rms > 0.02;
-        const next = this.decideVad(this.state, speaking);
-        if (next !== this.state) this.transition(next);
+        const now = Date.now();
+        if (speaking) this.lastVoiceAt = now;
+        // Continuous server-ASR: open a segment when the user starts speaking,
+        // close + transcribe it after a sustained silence gap.
+        if (this.serverAsrActive) {
+          const act = decideSegment(!!this.recorder, speaking, now - (this.lastVoiceAt || now), { ttsSpeaking: this.speaking });
+          if (act === 'start') { this.beginSegment(); if (this.state !== 'LISTENING') this.transition('LISTENING'); }
+          else if (act === 'stop') this.endSegment();
+        }
+        if (!this.recorder) {
+          const next = this.decideVad(this.state, speaking);
+          if (next !== this.state) this.transition(next);
+        }
       }, 120);
       this.transition('LISTENING');
       return { ok: true };
@@ -180,11 +239,18 @@ export class AudioEngine {
     }
   }
 
-  // ── Real ASR (Web Speech API) ────────────────────────────────────────
+  // ── Real ASR (Web Speech API, with continuous server-ASR fallback) ───
   startListening(): { ok: boolean; error?: VoiceError } {
     const g = globalThis as any;
     const SR = g.SpeechRecognition || g.webkitSpeechRecognition;
-    if (!SR) { this.transition('ERROR', 'ASR_UNAVAILABLE'); return { ok: false, error: 'ASR_UNAVAILABLE' }; }
+    if (!SR) {
+      // Packaged desktop has no system speech service. If we already hold the
+      // microphone, keep listening CONTINUOUSLY through Akansha's own provider
+      // transcription — never a second mic, never a fake success.
+      if (this.mediaStream && this.mediaStream.active) { this.startServerAsr(); return { ok: true }; }
+      this.transition('ERROR', 'ASR_UNAVAILABLE');
+      return { ok: false, error: 'ASR_UNAVAILABLE' };
+    }
     if (this.recognition) return { ok: true };
     const rec = new SR();
     rec.lang = 'en-IN';
@@ -208,12 +274,102 @@ export class AudioEngine {
       if (interim) this.partialListeners.forEach((l) => l(interim));
     };
     rec.onerror = (e: any) => {
-      const err: VoiceError = e?.error === 'not-allowed' ? 'MICROPHONE_PERMISSION_DENIED' : e?.error === 'no-speech' ? 'ASR_TIMEOUT' : 'ASR_UNAVAILABLE';
+      const kind = e?.error;
+      // Service-side failures are exactly where packaged Electron dies ('network').
+      // Degrade to the server-ASR path on the SAME microphone stream.
+      if ((kind === 'network' || kind === 'service-not-allowed' || kind === 'audio-capture') && this.mediaStream && this.mediaStream.active) {
+        try { (this.recognition as any)?.abort?.(); } catch { /* ignore */ }
+        this.recognition = null;
+        this.startServerAsr();
+        return;
+      }
+      const err: VoiceError = kind === 'not-allowed' ? 'MICROPHONE_PERMISSION_DENIED' : kind === 'no-speech' ? 'ASR_TIMEOUT' : 'ASR_UNAVAILABLE';
       this.transition('ERROR', err);
     };
     rec.onend = () => { if (this.state !== 'ERROR') this.transition('STANDBY'); };
-    try { rec.start(); this.recognition = rec; this.transition('LISTENING'); return { ok: true }; }
-    catch { return { ok: false, error: 'DEVICE_BUSY' }; }
+    try { rec.start(); this.recognition = rec; this.asrMode = 'web'; this.transition('LISTENING'); return { ok: true }; }
+    catch {
+      // Cannot even start native SR — server-ASR on the live mic is still real.
+      if (this.mediaStream && this.mediaStream.active) { this.startServerAsr(); return { ok: true }; }
+      return { ok: false, error: 'DEVICE_BUSY' };
+    }
+  }
+
+  // ── Continuous server-ASR (packaged desktop) ─────────────────────────
+  private startServerAsr() {
+    this.asrMode = 'server';
+    this.serverAsrActive = true;
+    this.asrFailures = 0;
+    this.detail = undefined;
+    if (this.state !== 'LISTENING') this.transition('LISTENING');
+  }
+
+  private beginSegment() {
+    if (!this.mediaStream || this.recorder) return;
+    try {
+      const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
+      const rec = mime ? new MediaRecorder(this.mediaStream, { mimeType: mime }) : new MediaRecorder(this.mediaStream);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = (e: any) => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        this.recorder = null;
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        // Sub-300ms blips are noise, not commands — drop honestly, don't send.
+        if (Date.now() - this.segmentStartedAt < 300 || blob.size < 1000) {
+          if (this.state === 'LISTENING') this.transition('STANDBY');
+          return;
+        }
+        void this.transcribeSegment(blob);
+      };
+      this.recorder = rec;
+      this.segmentStartedAt = Date.now();
+      rec.start();
+    } catch { this.recorder = null; }
+  }
+
+  private endSegment() {
+    if (this.recorder) { try { this.recorder.stop(); } catch { this.recorder = null; } }
+  }
+
+  private async transcribeSegment(blob: Blob) {
+    this.transition('PROCESSING');
+    try {
+      const fd = new FormData();
+      fd.append('audio', blob, 'speech.webm');
+      const res = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
+      const json: any = await res.json().catch(() => ({}));
+      if (res.ok) {
+        this.asrFailures = 0;
+        const text = String(json?.text ?? '').trim();
+        if (text) {
+          // FINAL transcript → the SAME executable pipeline as native SR.
+          const utteranceId = `utt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          this.utteranceListeners.forEach((l) => l({ utteranceId, transcript: text }));
+        }
+        // Stay armed continuously; the answer's SPEAKING state takes over when it arrives.
+        if (this.state === 'PROCESSING') this.transition('LISTENING');
+        return;
+      }
+      const code = String(json?.code || (res.status === 503 ? 'NO_TRANSCRIPTION_PROVIDER' : 'UPSTREAM_ERROR'));
+      this.asrFailures += 1;
+      if (serverAsrFailure(code, this.asrFailures) === 'fatal') {
+        this.serverAsrActive = false;
+        this.asrMode = 'none';
+        this.detail = String(json?.detail || code).slice(0, 160);
+        this.transition('ERROR', code === 'NO_TRANSCRIPTION_PROVIDER' ? 'ASR_PROVIDER_MISSING' : 'ASR_UNAVAILABLE');
+      } else if (this.state === 'PROCESSING') {
+        this.transition('LISTENING');
+      }
+    } catch {
+      this.asrFailures += 1;
+      if (serverAsrFailure('UNAVAILABLE', this.asrFailures) === 'fatal') {
+        this.serverAsrActive = false; this.asrMode = 'none';
+        this.detail = 'transcription endpoint unreachable';
+        this.transition('ERROR', 'ASR_UNAVAILABLE');
+      } else if (this.state === 'PROCESSING') {
+        this.transition('LISTENING');
+      }
+    }
   }
 
   stopListening() {
@@ -229,6 +385,9 @@ export class AudioEngine {
    */
   stop() {
     if (this.recognition) { try { this.recognition.stop(); } catch {} this.recognition = null; }
+    if (this.recorder) { try { this.recorder.stop(); } catch {} this.recorder = null; }
+    this.serverAsrActive = false;
+    this.asrMode = 'none';
     if (this.vadTimer) { clearInterval(this.vadTimer); this.vadTimer = null; }
     if (this.mediaStream) { this.mediaStream.getTracks().forEach((t) => t.stop()); this.mediaStream = null; }
     if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }

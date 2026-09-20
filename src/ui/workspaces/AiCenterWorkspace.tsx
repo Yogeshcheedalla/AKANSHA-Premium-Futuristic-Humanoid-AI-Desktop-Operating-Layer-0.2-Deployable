@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
 import { Sparkles, Download, Plug, PlayCircle, Loader2, CheckCircle, AlertTriangle, Cpu, Globe, Boxes } from 'lucide-react';
 import type { SetupViewModel } from '@/core/aiSetup/types';
@@ -46,7 +46,9 @@ export function AiCenterWorkspace({ onNavigate }: Props) {
     finally { setFbBusy(false); }
   };
 
-  const load = useCallback(async () => {
+  // Plain function (not useCallback): React Compiler cannot preserve an empty-dep
+  // memo here, and the mount effect defers the call anyway.
+  const load = async () => {
     try {
       const setup: any = await (await fetch('/api/ai/setup', { credentials: 'same-origin' })).json();
       const provs: any = await (await fetch('/api/providers', { credentials: 'same-origin' })).json();
@@ -67,9 +69,9 @@ export function AiCenterWorkspace({ onNavigate }: Props) {
         online: vm.readiness.online,
       });
     } catch { /* honest absence: summary stays empty, no fake numbers */ }
-  }, []);
+  };
 
-  useEffect(() => { const id = setTimeout(load, 0); return () => clearTimeout(id); }, [load]);
+  useEffect(() => { const id = setTimeout(load, 0); return () => clearTimeout(id); }, []); // mount-only refresh; handlers re-invoke load directly
 
   const runTest = async () => {
     setTest({ running: true });

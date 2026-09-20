@@ -38,11 +38,13 @@ const isSessionActive = (s: VoiceState) => s === 'LISTENING' || s === 'PROCESSIN
 export function VoiceControl() {
   const [state, setState] = useState<VoiceState>(() => (audioEngine ? audioEngine.getState().state : 'STANDBY'));
   const [active, setActive] = useState<boolean>(() => (audioEngine ? isSessionActive(audioEngine.getState().state) : false));
+  const [asrMode, setAsrMode] = useState<string>(() => audioEngine?.getState().asrMode || 'none');
+  const [errDetail, setErrDetail] = useState<string>(() => audioEngine?.getState().detail || '');
 
   useEffect(() => {
     if (!audioEngine) return;
     // Subscribe only — no synchronous setState in the effect body.
-    const off = audioEngine.onState((s) => { setState(s.state); setActive(isSessionActive(s.state)); });
+    const off = audioEngine.onState((s) => { setState(s.state); setActive(isSessionActive(s.state)); setAsrMode(s.asrMode || 'none'); setErrDetail(s.detail || ''); });
     return () => { off(); };
   }, []);
 
@@ -120,7 +122,11 @@ export function VoiceControl() {
       onClick={() => { void toggle(); }}
       aria-label={active ? 'Stop voice command' : 'Start voice command'}
       title={state === 'ERROR'
-        ? 'Voice failed: microphone permission denied OR speech recognition is unavailable in the packaged desktop app (it has no system speech service). Use Akansha in Chrome/Edge for voice, or type below. Ctrl+Space can also be captured by the Windows input-language bar (ENG-IN) — the button is the reliable control.'
+        ? (asrMode === 'none' && errDetail
+            ? `Voice failed: ${errDetail}${audioEngine?.getState().error === 'ASR_PROVIDER_MISSING' ? ' — fix: Providers → connect a free Gemini or Groq API key, then press again.' : ''}`
+            : 'Voice failed: microphone permission denied OR no transcription provider is connected. Open Providers and connect a free Gemini or Groq key, or type below. Ctrl+Space can also be captured by the Windows input-language bar — the button is the reliable control.')
+        : active && asrMode === 'server'
+        ? 'Continuous listening: speak a command, pause — Akansha transcribes it through your connected provider and acts. Click or Esc to stop.'
         : 'Click to start/stop voice · Ctrl+Space toggle · Ctrl+Shift+Space push-to-talk · Esc stop'}
       className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs tracking-wide transition-colors ${
         state === 'ERROR'
@@ -133,7 +139,7 @@ export function VoiceControl() {
       <span className={`w-2 h-2 rounded-full ${DOT[state]}`} />
       {busy ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
       <span>{LABEL[state]}</span>
-      <span className="hidden lg:inline text-white/25 ml-1">Ctrl+Space</span>
+      <span className="hidden lg:inline text-white/25 ml-1">{active && asrMode === 'server' ? 'continuous' : 'Ctrl+Space'}</span>
     </button>
   );
 }

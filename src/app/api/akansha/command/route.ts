@@ -5,6 +5,8 @@ import { skillRegistry } from '@/core/skills/SkillRegistry';
 import { masterOrchestrator } from '@/core/orchestration/MasterOrchestrator';
 import { learningEngine } from '@/core/learning/LearningEngine';
 import { modelRouter } from '@/core/models/ModelRouter';
+import { mapToAiModePhrase } from '@/core/models/AiModeCommands';
+import { applyAiMode } from '@/core/models/AiModeApply';
 import { executionLedger } from '@/core/runtime/ExecutionLedger';
 import { resourceGovernor } from '@/core/resources/ResourceGovernor';
 import { memoryIntelligence } from '@/core/memory/MemoryIntelligence';
@@ -138,6 +140,36 @@ export async function POST(request: Request) {
               candidates: [{ providerId: 'local-skill', modelId: 'deterministic', score: 100, reasons: ['no-model-required'] }],
               selected: { providerId: 'local-skill', modelId: 'deterministic' },
               reasons: ['Resolved locally without a model call — zero latency, zero tokens.'],
+            },
+            latencyMs: Date.now() - started,
+          };
+        }
+
+        // ── TIER 0b: AI-mode switch phrasings → real ModelRouter policy change.
+        //    Same code path as the Settings UI toggle (applyAiMode) — voice and UI
+        //    can never drift. Honest even when the requested mode can't be met.
+        const modePhrase = mapToAiModePhrase(text);
+        if (modePhrase) {
+          const applied = applyAiMode(modePhrase.mode);
+          const label = modePhrase.mode === 'offline' ? 'Offline (local-first)' : modePhrase.mode === 'cloud' ? 'Online (cloud providers)' : modePhrase.mode === 'both' ? 'Both (local + cloud)' : 'Auto (balanced)';
+          const reply = applied.requestedMode === 'offline' && !applied.offlineReady
+            ? `I set the router to local-first, but offline mode is NOT ready yet: ${applied.reason || 'no installed model has passed a real inference test'}. Install one from Models — I will not silently use the cloud and call it offline, Boss.`
+            : `${label} mode enabled${applied.reason ? ` — ${applied.reason}` : '.'} Routing updated live, Boss.`;
+          return {
+            ok: true,
+            requestId,
+            intent: intent.intent,
+            tier: 'tier0',
+            path: 'ai-mode',
+            usedModel: false,
+            status: 'COMPLETED',
+            response: reply,
+            mode: applied,
+            trace: {
+              kind: 'deterministic',
+              candidates: [{ providerId: 'model-router', modelId: 'policy', score: 100, reasons: ['ai-mode-phrase'] }],
+              selected: { providerId: 'model-router', modelId: 'policy' },
+              reasons: ['Applied through the existing ModelRouter policy — the same authority the Settings toggle uses.'],
             },
             latencyMs: Date.now() - started,
           };
