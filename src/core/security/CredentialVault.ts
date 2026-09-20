@@ -1,5 +1,7 @@
 import crypto from 'crypto';
-import { db } from '@/db';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { db, isDbConfigured } from '@/db';
 import { credentials } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -11,26 +13,58 @@ import { eq } from 'drizzle-orm';
  * mission history or LLM prompts. Only an opaque credentialRef is exposed.
  *
  * Secrets are encrypted with AES-256-GCM and held in a synchronous in-memory
- * cache (so the hot resolve() path stays sync), and — when a database is
- * configured — mirrored to the `credentials` table so they survive restarts.
- * On startup, hydrate() reloads the encrypted envelopes from the DB into the
- * cache. When persistence is disabled the vault still works for the lifetime of
- * the process.
- *
- * In a real Windows desktop build the durable layer would delegate to Windows
- * Credential Manager / DPAPI; the same contract (opaque ref, never raw) holds.
+ * cache (so the hot resolve() path stays sync). Durability follows whichever
+ * persistence layer the deployment has:
+ *   • database configured (web/production): envelopes mirror to the
+ *     `credentials` table — EXACTLY as before, same key derivation, existing
+ *     stored envelopes remain valid;
+ *   • DB-less desktop: envelopes persist to an encrypted local file under the
+ *     app home, keyed by a random machine-local secret generated on first use
+ *     (file ACL is the boundary) — so a connected provider survives restart.
+ * The contract (opaque ref, never raw) is identical in both modes.
  */
 export class CredentialVault {
   private store = new Map<string, { encrypted: string; iv: string }>();
   private algo = 'aes-256-gcm';
   private hydrated = false;
 
+  /* ── DB-less desktop persistence ─────────────────────────────────────── */
+  private localDir(): string {
+    return process.env.AKANSHA_HOME ? join(process.env.AKANSHA_HOME, 'data') : join(process.cwd(), 'data', 'akansha', 'data');
+  }
+  private localFile(): string { return join(this.localDir(), 'vault.json'); }
+  private keyFile(): string { return join(this.localDir(), 'vault.key'); }
+  private machineSecret(): Buffer {
+    try {
+      if (!existsSync(this.keyFile())) {
+        mkdirSync(dirname(this.keyFile()), { recursive: true });
+        writeFileSync(this.keyFile(), crypto.randomBytes(32), { mode: 0o600 });
+      }
+      return readFileSync(this.keyFile());
+    } catch {
+      return Buffer.from('akansha-vault-machine-secret-unavailable');
+    }
+  }
+  private readLocal(): Record<string, { encrypted: string; iv: string }> {
+    try {
+      if (!existsSync(this.localFile())) return {};
+      const j = JSON.parse(readFileSync(this.localFile(), 'utf8'));
+      return j && typeof j === 'object' ? j : {};
+    } catch { return {}; }
+  }
+  private writeLocal(map: Record<string, { encrypted: string; iv: string }>): void {
+    try { mkdirSync(dirname(this.localFile()), { recursive: true }); writeFileSync(this.localFile(), JSON.stringify(map), { mode: 0o600 }); } catch { /* best effort */ }
+  }
+
   private key(): Buffer {
     const secret =
       process.env.AKANSHA_SECRET ||
       process.env.DATABASE_URL ||
       'akansha-local-development-vault-key';
-    return crypto.createHash('sha256').update(secret).digest();
+    // DB mode: EXACT previous derivation (existing production envelopes stay valid).
+    if (isDbConfigured) return crypto.createHash('sha256').update(secret).digest();
+    // Desktop mode: bind to the per-machine secret file as well.
+    return crypto.createHash('sha256').update(secret).update(this.machineSecret()).digest();
   }
 
   /**
@@ -40,6 +74,12 @@ export class CredentialVault {
   async hydrate(): Promise<void> {
     if (this.hydrated) return;
     this.hydrated = true;
+    if (!isDbConfigured) {
+      for (const [ref, env] of Object.entries(this.readLocal())) {
+        if (!this.store.has(ref) && env?.encrypted && env?.iv) this.store.set(ref, env);
+      }
+      return;
+    }
     try {
       const rows = await db.select({ ref: credentials.ref, encrypted: credentials.encrypted, iv: credentials.iv }).from(credentials);
       for (const r of rows) {
@@ -71,6 +111,12 @@ export class CredentialVault {
   }
 
   private async persist(ref: string, encrypted: string, iv: string): Promise<void> {
+    if (!isDbConfigured) {
+      const map = this.readLocal();
+      map[ref] = { encrypted, iv };
+      this.writeLocal(map);
+      return;
+    }
     try {
       await db
         .insert(credentials)
@@ -120,6 +166,12 @@ export class CredentialVault {
 
   forget(ref: string) {
     this.store.delete(ref);
+    if (!isDbConfigured) {
+      const map = this.readLocal();
+      delete map[ref];
+      this.writeLocal(map);
+      return;
+    }
     void db.delete(credentials).where(eq(credentials.ref, ref)).catch(() => {});
   }
 }

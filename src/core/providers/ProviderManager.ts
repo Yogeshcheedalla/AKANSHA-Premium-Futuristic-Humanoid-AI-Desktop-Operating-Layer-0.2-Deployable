@@ -82,6 +82,10 @@ export class ProviderManager {
     if (this.loaded) return;
     this.loaded = true;
     this.providers.clear();
+    // Make stored secrets resolvable before any getRecord() (idempotent). Without
+    // this, a desktop restart could list providers as "no credential" even though
+    // the encrypted envelope exists on disk/DB.
+    await credentialVault.hydrate();
 
     let rows: any[] = [];
     if (isDbConfigured) {
