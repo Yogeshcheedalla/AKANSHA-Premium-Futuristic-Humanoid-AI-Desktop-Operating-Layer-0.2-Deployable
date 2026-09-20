@@ -18,7 +18,8 @@ export async function GET(request: Request) {
   if (!guard.ok) return guard.response;
   try {
     const url = new URL(request.url);
-    const snapshot = await providerBootstrap.run(url.searchParams.get('refresh') === '1');
+    await providerBootstrap.run(url.searchParams.get('refresh') === '1');
+    const snapshot = providerBootstrap.currentView()!;
     return NextResponse.json({ ok: true, ...snapshot });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'runtime status failed' }, { status: 500 });

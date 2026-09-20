@@ -49,6 +49,10 @@ test('error classification: 401/credits → AUTH_REQUIRED, 429 → RATE_LIMITED,
   assert.equal(classifyGenerationError('weird upstream'), 'DEGRADED');
 });
 
+test('error classification: "429 no credits" is permanent billing, not a transient rate limit (live-found)', () => {
+  assert.equal(classifyGenerationError('OpenAI HTTP 429: {"error":{"message":"You have no credits remaining."}}'), 'AUTH_REQUIRED');
+});
+
 test('cost tiers: openrouter/free and :free models are FREE; openrouter/auto and metered models are PAID', () => {
   assert.equal(modelCostTier('openrouter', 'openrouter/free'), 'free');
   assert.equal(modelCostTier('openrouter', 'meta-llama/llama-3.3-70b-instruct:free'), 'free');

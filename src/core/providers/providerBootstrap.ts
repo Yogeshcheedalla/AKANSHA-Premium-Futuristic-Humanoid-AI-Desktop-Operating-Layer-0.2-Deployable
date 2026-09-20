@@ -67,8 +67,10 @@ const TTL: Record<CachedHealth, number> = {
 export function classifyGenerationError(msg: string): CachedHealth {
   const m = String(msg || '').toLowerCase();
   if (/401|403|unauthorized|invalid (api )?key|permission denied/.test(m)) return 'AUTH_REQUIRED';
+  // Billing exhaustion is PERMANENT until the account changes — check it before
+  // the generic 429 so a "429 no credits" gets the long cooldown, not 30s retries.
+  if (/credit|billing|quota exceeded|insufficient funds|payment required/.test(m)) return 'AUTH_REQUIRED';
   if (/429|rate.?limit|too many requests/.test(m)) return 'RATE_LIMITED';
-  if (/credit|billing|quota exceeded|insufficient funds/.test(m)) return 'AUTH_REQUIRED'; // cannot succeed until account changes
   if (/timeout|unreachable|network|fetch failed|econn/.test(m)) return 'UNAVAILABLE';
   return 'DEGRADED';
 }
@@ -210,6 +212,29 @@ class ProviderBootstrap {
   }
 
   get(): RuntimeSnapshot | null { return this.snapshot; }
+
+  /**
+   * Refresh the published snapshot from the CURRENT cache with zero network
+   * calls — so header polling reflects self-healing (a route demoted by a real
+   * failure) immediately, without re-probing providers.
+   */
+  currentView(): RuntimeSnapshot | null {
+    const s = this.snapshot;
+    if (!s) return null;
+    for (const r of s.routes) {
+      const h = this.cache.get(r.providerId);
+      if (h) r.health = h.health;
+    }
+    const { status } = computeRuntimeStatus({ localReady: s.local.readyModels > 0, routes: s.routes });
+    s.status = status;
+    if (status === 'LOCAL_READY') s.activeRoute = null;
+    else if (status === 'FREE_ONLINE_READY' || status === 'ONLINE_READY' || status === 'PAID_ONLY') {
+      const best = s.routes.filter((r) => r.enabled && r.health === 'AVAILABLE' && r.modelCount > 0)
+        .sort((a, b) => (a.costTier === 'free' ? -1 : 1) - (b.costTier === 'free' ? -1 : 1))[0];
+      s.activeRoute = best?.bestModel ? { providerId: best.providerId, modelId: best.bestModel, costTier: best.costTier === 'unknown' ? 'paid' : best.costTier } : null;
+    } else s.activeRoute = null;
+    return s;
+  }
 
   /** Called by ModelRouter.rank(): hard eligibility gate from live evidence. */
   isEligible(providerId: string): boolean {
