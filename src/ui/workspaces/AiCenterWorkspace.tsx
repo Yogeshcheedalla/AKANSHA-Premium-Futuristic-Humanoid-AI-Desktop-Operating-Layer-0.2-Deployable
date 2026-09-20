@@ -29,6 +29,22 @@ interface Summary {
 export function AiCenterWorkspace({ onNavigate }: Props) {
   const [s, setS] = useState<Summary | null>(null);
   const [test, setTest] = useState<{ running: boolean; ok?: boolean; text?: string; provider?: string; model?: string; latencyMs?: number; status?: string; reason?: string } | null>(null);
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbResult, setFbResult] = useState<string | null>(null);
+
+  /** One-click keyless free fallbacks: Kilo auto-router, LLM7, OVHcloud. */
+  const enableFallbacks = async () => {
+    setFbBusy(true); setFbResult(null);
+    try {
+      const r = await fetch('/api/providers/free-fallbacks', { method: 'POST', credentials: 'same-origin' });
+      const d = await r.json();
+      const lines = (d.results || []).map((x: { name: string; ok: boolean; health?: string; error?: string }) =>
+        `${x.name}: ${x.ok ? (x.health === 'AVAILABLE' ? 'verified live' : `saved (check: ${x.health || 'unknown'})`) : `failed (${x.error || 'see providers'})`}`);
+      setFbResult(lines.join(' · ') || 'No providers enabled.');
+      await load();
+    } catch (e: any) { setFbResult('Request failed: ' + (e?.message || e)); }
+    finally { setFbBusy(false); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -103,6 +119,9 @@ export function AiCenterWorkspace({ onNavigate }: Props) {
           <button onClick={() => onNavigate('modelcenter')} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium border border-cyan-400/20 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 transition-colors"><Download size={14} /> Download Models</button>
           <button onClick={() => onNavigate('providers')} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium border border-purple-400/20 bg-purple-500/10 text-purple-200 hover:bg-purple-500/20 transition-colors"><Plug size={14} /> Connect Provider</button>
           <button onClick={runTest} disabled={test?.running} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium border border-emerald-400/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-40 transition-colors">{test?.running ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />} Run AI Test</button>
+          <button onClick={enableFallbacks} disabled={fbBusy} title="Adds Kilo (kilo-auto/free), LLM7 and OVHcloud anonymous endpoints as routing candidates — used automatically when keyed/quota providers run dry"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium border border-white/15 bg-white/[0.04] text-white/70 hover:text-white/90 hover:border-white/25 disabled:opacity-40 transition-colors">{fbBusy ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />} Enable free fallbacks</button>
+          {fbResult && <div className="text-[10px] text-cyan-200/80 leading-relaxed">{fbResult}</div>}
         </GlassSurface>
       </div>
 

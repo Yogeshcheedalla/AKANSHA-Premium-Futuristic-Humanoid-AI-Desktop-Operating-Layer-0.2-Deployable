@@ -145,6 +145,9 @@ export const FREE_PROVIDER_CATALOG = {
     {
       providerId: 'kilo', displayName: 'Kilo Code', category: 'inference-provider',
       baseUrl: 'https://api.kilo.ai/api/gateway', apiKeyUrl: 'https://app.kilo.ai/profile',
+      // Source blanket note: "All endpoints are OpenAI SDK-compatible unless noted"
+      // (Kilo is not noted otherwise; gateway serves OpenAI-format routes).
+      openAiCompatible: true,
       requiresKey: false,
       freeTier: 'Free models with no credit card and no API key required; kilo-auto/free auto-router dynamically routes to the free pool',
       models: [
@@ -157,6 +160,7 @@ export const FREE_PROVIDER_CATALOG = {
     {
       providerId: 'llm7', displayName: 'LLM7.io', category: 'inference-provider',
       baseUrl: 'https://api.llm7.io/v1', apiKeyUrl: 'https://token.llm7.io',
+      openAiCompatible: true, // /v1 gateway; blanket compatibility note, no exception
       requiresKey: false,
       freeTier: 'Anonymous access needs no key (turbo models); a free token raises limits on the same models',
       models: [
@@ -164,6 +168,20 @@ export const FREE_PROVIDER_CATALOG = {
         { name: 'mistral-Nemo-Instruct-2407', context: '128K', modality: 'Text', rateLimit: '10 RPM, 60 req/hr (anonymous)' },
       ],
       sourceUrl: 'https://token.llm7.io',
+    },
+    {
+      providerId: 'ollama-cloud', displayName: 'Ollama Cloud', category: 'inference-provider',
+      baseUrl: 'https://ollama.com/v1', apiKeyUrl: 'https://ollama.com/settings/keys',
+      openAiCompatible: true, // documented: "OpenAI SDK-compatible via https://ollama.com/v1"
+      requiresKey: true,
+      freeTier: 'Free tier with usage limits; 16 cloud model families from the Ollama library',
+      restrictions: ['Session limits reset every 5 hours; weekly limits reset every 7 days (per source note)'],
+      models: [
+        { name: 'gpt-oss:20b', context: '131K', modality: 'Text', rateLimit: 'Session/weekly limits (unpublished)' },
+        { name: 'deepseek-v4-flash', context: '1M', modality: 'Text', rateLimit: 'Session/weekly limits (unpublished)' },
+        { name: 'kimi-k3', context: '1M', modality: 'Text', rateLimit: 'Session/weekly limits (unpublished)' },
+      ],
+      sourceUrl: 'https://ollama.com/settings/keys',
     },
     {
       providerId: 'nvidia-nim', displayName: 'NVIDIA NIM', category: 'inference-provider',

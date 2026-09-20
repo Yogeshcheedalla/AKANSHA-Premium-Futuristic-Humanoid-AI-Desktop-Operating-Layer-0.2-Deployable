@@ -36,8 +36,14 @@ test('4/8 · OpenAI-compatible subset routes through the existing provider type;
   assert.ok(compat.some((p) => p.providerId === 'openrouter'));
   assert.ok(compat.some((p) => p.providerId === 'groq'));
   assert.ok(compat.some((p) => p.providerId === 'ovhcloud'));
-  // Cloudflare documented as its own shape → excluded from one-click OpenAI connect:
+  assert.ok(compat.some((p) => p.providerId === 'ollama-cloud'));
+  // keyless free fallback pool (the "second default") is all one-clickable:
+  assert.ok(compat.some((p) => p.providerId === 'kilo' && p.requiresKey === false));
+  assert.ok(compat.some((p) => p.providerId === 'llm7' && p.requiresKey === false));
+  // Cloudflare documented as its own endpoint shape → excluded from one-click OpenAI connect:
   assert.ok(!compat.some((p) => p.providerId === 'cloudflare-workers-ai'));
+  // Native-API providers stay manual (blanket note not trusted over known wire formats):
+  assert.ok(!compat.some((p) => p.providerId === 'google-gemini'));
 });
 
 test('11 · no secret-like strings anywhere in the catalog', () => {
