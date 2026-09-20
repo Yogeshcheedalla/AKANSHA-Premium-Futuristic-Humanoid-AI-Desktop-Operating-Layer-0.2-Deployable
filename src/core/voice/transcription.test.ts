@@ -15,6 +15,11 @@ test('candidates: OpenAI-compatible with key → audio endpoint shape', () => {
   assert.equal(c[0].model, 'whisper-large-v3');
 });
 
+test('candidates: official OpenAI type defaults to its own model naming (live-verified 404 otherwise)', () => {
+  const c = listCandidates([rec({ providerId: 'openai', type: 'openai', baseUrl: 'https://api.openai.com/v1' })]);
+  assert.equal(c[0].model, 'whisper-1');
+});
+
 test('candidates: custom transcription model honored', () => {
   const c = listCandidates([rec({ settings: { transcriptionModel: 'whisper-large-v3-turbo' } })]);
   assert.equal(c[0].model, 'whisper-large-v3-turbo');

@@ -46,7 +46,8 @@ export interface TranscriptionResult {
   detail?: string;
 }
 
-const DEFAULT_OPENAI_ASR_MODEL = 'whisper-large-v3';
+const DEFAULT_OPENAI_ASR_MODEL = 'whisper-large-v3'; // Groq/OpenAI-compatible naming
+const DEFAULT_OPENAI_OFFICIAL_ASR_MODEL = 'whisper-1'; // api.openai.com naming (verified live: it 404s on large-v3)
 const DEFAULT_GEMINI_ASR_MODEL = 'gemini-2.0-flash';
 
 /** Strip anything key-shaped from upstream error text before it reaches UI/logs. */
@@ -76,7 +77,8 @@ export function listCandidates(records: Array<{
     if (r.type === 'gemini') {
       out.push({ providerId: r.providerId, name: r.name, kind: 'gemini-inline', baseUrl: base, credentialRef: '', model: model || DEFAULT_GEMINI_ASR_MODEL });
     } else if (r.type === 'openai' || r.type === 'openai-compatible' || r.type === 'custom') {
-      out.push({ providerId: r.providerId, name: r.name, kind: 'openai-audio', baseUrl: base, credentialRef: '', model: model || DEFAULT_OPENAI_ASR_MODEL });
+      const fallbackModel = r.type === 'openai' ? DEFAULT_OPENAI_OFFICIAL_ASR_MODEL : DEFAULT_OPENAI_ASR_MODEL;
+      out.push({ providerId: r.providerId, name: r.name, kind: 'openai-audio', baseUrl: base, credentialRef: '', model: model || fallbackModel });
     }
   }
   return out;
