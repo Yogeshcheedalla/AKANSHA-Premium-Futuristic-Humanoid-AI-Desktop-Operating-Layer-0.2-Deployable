@@ -17,7 +17,7 @@
  * It NEVER fabricates readiness: if mic/ASR/TTS are unavailable, capabilities()
  * reports false and the UI must show the truth.
  */
-import { AUDIO_CONSTRAINTS, readAudioHealth, decideEndpoint, decideBargeIn, type AudioHealth } from '@/core/voice/audioControl';
+import { AUDIO_CONSTRAINTS, readAudioHealth, decideEndpoint, decideBargeIn, encodeWavPcm16, type AudioHealth } from '@/core/voice/audioControl';
 
 export type VoiceState =
   | 'MUTED'
@@ -116,7 +116,7 @@ export interface FinalUtterance {
   transcript: string;
 }
 
-type StateListener = (s: { state: VoiceState; error?: VoiceError; asrMode?: AsrMode; detail?: string }) => void;
+type StateListener = (s: { state: VoiceState; error?: VoiceError; asrMode?: AsrMode; detail?: string; local?: boolean; bundled?: boolean }) => void;
 type UtteranceListener = (u: FinalUtterance) => void;
 type PartialListener = (text: string) => void;
 
@@ -141,7 +141,7 @@ export class AudioEngine {
 
   // Continuous server-ASR (packaged desktop: no system speech service).
   private serverAsrActive = false;
-  private recorder: MediaRecorder | null = null;
+  private recorder: { stop?: () => void } | { __pcm: true } | null = null;
   private segmentStartedAt = 0;
   private lastVoiceAt = 0;
   private asrFailures = 0;
@@ -153,6 +153,13 @@ export class AudioEngine {
   private nearEndSpeechStart = 0;
   private partialStableAt = 0;
   private discardNext = false;
+  // PCM capture (for local Whisper — needs WAV, not webm/opus).
+  private processor: any = null;
+  private pcmChunks: Float32Array[] = [];
+  private recordingPcm = false;
+  // Offline ASR provenance from the LAST real transcription (drives the LOCAL badge).
+  private lastAsrLocal = false;
+  private lastAsrBundled = false;
 
   /** The ACTUAL applied audio processing (AEC/NS/AGC), verified from the live track. */
   getAudioHealth(): AudioHealth | null { return this.audioHealth; }
@@ -195,8 +202,8 @@ export class AudioEngine {
     return true;
   }
 
-  getState(): { state: VoiceState; error?: VoiceError; asrMode?: AsrMode; detail?: string } {
-    return { state: this.state, error: this.error, asrMode: this.asrMode, detail: this.detail };
+  getState(): { state: VoiceState; error?: VoiceError; asrMode?: AsrMode; detail?: string; local?: boolean; bundled?: boolean } {
+    return { state: this.state, error: this.error, asrMode: this.asrMode, detail: this.detail, local: this.lastAsrLocal, bundled: this.lastAsrBundled };
   }
 
   /** Which ASR path the live session is using ('' = no session). */
@@ -218,7 +225,7 @@ export class AudioEngine {
   onFinalUtterance(cb: UtteranceListener) { this.utteranceListeners.add(cb); return () => this.utteranceListeners.delete(cb); }
   onPartial(cb: PartialListener) { this.partialListeners.add(cb); return () => this.partialListeners.delete(cb); }
 
-  private emitState() { this.stateListeners.forEach((l) => l({ state: this.state, error: this.error, asrMode: this.asrMode, detail: this.detail })); }
+  private emitState() { this.stateListeners.forEach((l) => l({ state: this.state, error: this.error, asrMode: this.asrMode, detail: this.detail, local: this.lastAsrLocal, bundled: this.lastAsrBundled })); }
 
   // ── Real browser capture + VAD ───────────────────────────────────────
   async start(): Promise<{ ok: boolean; error?: VoiceError }> {
@@ -245,6 +252,21 @@ export class AudioEngine {
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 512;
       source.connect(this.analyser);
+      // PCM tap for local Whisper (WAV). ScriptProcessor routed through a silent
+      // gain so it runs without producing feedback.
+      try {
+        this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
+        const silent = this.audioCtx.createGain();
+        silent.gain.value = 0;
+        this.processor.onaudioprocess = (e: any) => {
+          if (!this.recordingPcm) return;
+          const inp = e.inputBuffer.getChannelData(0);
+          this.pcmChunks.push(new Float32Array(inp));
+        };
+        source.connect(this.processor);
+        this.processor.connect(silent);
+        silent.connect(this.audioCtx.destination);
+      } catch { /* PCM tap optional; server-ASR still works via cloud if absent */ }
       const data = new Uint8Array(this.analyser.fftSize);
       this.vadTimer = setInterval(() => {
         if (!this.analyser) return;
@@ -356,49 +378,48 @@ export class AudioEngine {
   }
 
   private beginSegment() {
-    if (!this.mediaStream || this.recorder) return;
-    try {
-      const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
-      const rec = mime ? new MediaRecorder(this.mediaStream, { mimeType: mime }) : new MediaRecorder(this.mediaStream);
-      const chunks: Blob[] = [];
-      rec.ondataavailable = (e: any) => { if (e.data && e.data.size) chunks.push(e.data); };
-      rec.onstop = () => {
-        this.recorder = null;
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const discard = this.discardNext; this.discardNext = false;
-        this.speechStartAt = 0; this.partialStableAt = 0;
-        // Sub-300ms blips or an endpoint 'reject' are noise, not commands — drop honestly.
-        if (discard || Date.now() - this.segmentStartedAt < 300 || blob.size < 1000) {
-          if (this.state === 'LISTENING') this.transition('STANDBY');
-          return;
-        }
-        void this.transcribeSegment(blob);
-      };
-      this.recorder = rec;
-      this.segmentStartedAt = Date.now();
-      rec.start();
-    } catch { this.recorder = null; }
+    if (!this.mediaStream) return;
+    this.pcmChunks = [];
+    this.recordingPcm = true;
+    this.discardNext = false;
+    this.segmentStartedAt = Date.now();
+    this.recorder = { __pcm: true }; // marker so the VAD loop knows a segment is open
   }
 
   private endSegment() {
-    if (this.recorder) { try { this.recorder.stop(); } catch { this.recorder = null; } }
+    if (!this.recorder) return;
+    this.recorder = null;
+    this.recordingPcm = false;
+    const chunks = this.pcmChunks; this.pcmChunks = [];
+    const discard = this.discardNext; this.discardNext = false;
+    this.speechStartAt = 0; this.partialStableAt = 0;
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const rate = this.audioCtx?.sampleRate || 48000;
+    // Sub-300ms blips or an endpoint 'reject' are noise, not commands — drop honestly.
+    if (discard || total < rate * 0.3) { if (this.state === 'LISTENING') this.transition('STANDBY'); return; }
+    const merged = new Float32Array(total);
+    let o = 0; for (const c of chunks) { merged.set(c, o); o += c.length; }
+    const wav = encodeWavPcm16(merged, rate);
+    void this.transcribeSegment(new Blob([wav], { type: 'audio/wav' }));
   }
 
   /** Stop the current segment and DROP it (noise blip below the speech floor). */
   private discardSegment() {
     this.discardNext = true;
-    if (this.recorder) { try { this.recorder.stop(); } catch { this.recorder = null; } }
+    if (this.recorder) this.endSegment();
   }
 
   private async transcribeSegment(blob: Blob) {
     this.transition('PROCESSING');
     try {
       const fd = new FormData();
-      fd.append('audio', blob, 'speech.webm');
+      fd.append('audio', blob, 'speech.wav');
       const res = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
       const json: any = await res.json().catch(() => ({}));
       if (res.ok) {
         this.asrFailures = 0;
+        this.lastAsrLocal = json?.local === true;
+        this.lastAsrBundled = json?.asrMode === 'bundled';
         const text = String(json?.text ?? '').trim();
         if (text) {
           // FINAL transcript → the SAME executable pipeline as native SR.
@@ -450,7 +471,9 @@ export class AudioEngine {
    */
   stop() {
     if (this.recognition) { try { this.recognition.stop(); } catch {} this.recognition = null; }
-    if (this.recorder) { try { this.recorder.stop(); } catch {} this.recorder = null; }
+    this.recorder = null;
+    this.recordingPcm = false;
+    this.pcmChunks = [];
     this.serverAsrActive = false;
     this.asrMode = 'none';
     if (this.vadTimer) { clearInterval(this.vadTimer); this.vadTimer = null; }

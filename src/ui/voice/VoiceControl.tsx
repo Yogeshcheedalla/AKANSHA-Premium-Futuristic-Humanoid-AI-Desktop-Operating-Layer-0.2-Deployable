@@ -40,11 +40,13 @@ export function VoiceControl() {
   const [active, setActive] = useState<boolean>(() => (audioEngine ? isSessionActive(audioEngine.getState().state) : false));
   const [asrMode, setAsrMode] = useState<string>(() => audioEngine?.getState().asrMode || 'none');
   const [errDetail, setErrDetail] = useState<string>(() => audioEngine?.getState().detail || '');
+  const [asrLocal, setAsrLocal] = useState<boolean>(() => audioEngine?.getState().local || false);
+  const [asrBundled, setAsrBundled] = useState<boolean>(() => audioEngine?.getState().bundled || false);
 
   useEffect(() => {
     if (!audioEngine) return;
     // Subscribe only — no synchronous setState in the effect body.
-    const off = audioEngine.onState((s) => { setState(s.state); setActive(isSessionActive(s.state)); setAsrMode(s.asrMode || 'none'); setErrDetail(s.detail || ''); });
+    const off = audioEngine.onState((s) => { setState(s.state); setActive(isSessionActive(s.state)); setAsrMode(s.asrMode || 'none'); setErrDetail(s.detail || ''); setAsrLocal(!!s.local); setAsrBundled(!!s.bundled); });
     return () => { off(); };
   }, []);
 
@@ -126,7 +128,7 @@ export function VoiceControl() {
             ? `Voice failed: ${errDetail}${audioEngine?.getState().error === 'ASR_PROVIDER_MISSING' ? ' — fix: Providers → connect a free Gemini or Groq API key, then press again.' : ''}`
             : 'Voice failed: microphone permission denied OR no transcription provider is connected. Open Providers and connect a free Gemini or Groq key, or type below. Ctrl+Space can also be captured by the Windows input-language bar — the button is the reliable control.')
         : active && asrMode === 'server'
-        ? 'Continuous listening: speak a command, pause — Akansha transcribes it through your connected provider and acts. Click or Esc to stop.'
+        ? `Continuous listening: speak a command, pause — Akansha transcribes it ${asrLocal ? (asrBundled ? 'locally on this device (Whisper, offline — no internet, no API key)' : 'locally on this device (Whisper)') : 'through your connected provider'} and acts. Click or Esc to stop.`
         : 'Click to start/stop voice · Ctrl+Space toggle · Ctrl+Shift+Space push-to-talk · Esc stop'}
       className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs tracking-wide transition-colors ${
         state === 'ERROR'
@@ -139,7 +141,11 @@ export function VoiceControl() {
       <span className={`w-2 h-2 rounded-full ${DOT[state]}`} />
       {busy ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
       <span>{LABEL[state]}</span>
-      <span className="hidden lg:inline text-white/25 ml-1">{active && asrMode === 'server' ? 'continuous' : 'Ctrl+Space'}</span>
+      <span className="hidden lg:inline text-white/25 ml-1">
+        {active && asrMode === 'server'
+          ? (asrLocal ? `continuous · LOCAL${asrBundled ? ' · offline' : ''}` : 'continuous')
+          : 'Ctrl+Space'}
+      </span>
     </button>
   );
 }

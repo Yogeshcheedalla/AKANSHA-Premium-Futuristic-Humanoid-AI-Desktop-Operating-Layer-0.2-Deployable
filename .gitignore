@@ -135,6 +135,10 @@ $RECYCLE.BIN/
 *.bin
 *.safetensors
 *.onnx
+# Bundled offline Whisper snapshot (fetched + integrity-verified by
+# scripts/prebundle-whisper.ts before packaging) — never commit the ~280 MB blob.
+# voice/models/manifest.json (provenance + SHA-256) stays tracked.
+voice/models/Xenova/
 
 # ───── Orca / git worktrees ─────
 .worktrees/

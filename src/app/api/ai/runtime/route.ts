@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     await providerBootstrap.run(url.searchParams.get('refresh') === '1');
     const snapshot = providerBootstrap.currentView()!;
-    const dimensions = await systemDimensions(snapshot);
+    const dimensions = systemDimensions(snapshot);
     return NextResponse.json({ ok: true, dimensions, ...snapshot });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'runtime status failed' }, { status: 500 });

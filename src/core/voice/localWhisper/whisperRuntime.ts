@@ -55,7 +55,6 @@ export function discoverWhisper(env: NodeJS.ProcessEnv = process.env): WhisperRu
     let model = env.WHISPER_MODEL || '';
     if (!model || !existsSync(model)) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { readdirSync } = require('node:fs') as typeof import('node:fs');
         const cand = readdirSync(dir).find((f) => /^ggml-.*\.bin$/i.test(f));
         model = cand ? join(dir, cand) : '';

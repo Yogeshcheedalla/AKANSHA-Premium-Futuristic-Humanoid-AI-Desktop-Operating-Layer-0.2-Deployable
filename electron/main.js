@@ -135,6 +135,10 @@ async function startBackend() {
         // The backend runs as a node child (no process.resourcesPath), so forward the
         // bundled runtime dir; discovery reads AKANSHA_PACKAGED_RUNTIME.
         AKANSHA_PACKAGED_RUNTIME: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'llama') : '',
+        // Bundled OFFLINE Whisper model (free first-run voice, no download). The
+        // installer ships voice/models; whisperProvider resolves it via this env so
+        // a fresh, internet-less install transcribes on the very first utterance.
+        AKANSHA_WHISPER_BUNDLE: app.isPackaged ? path.join(process.resourcesPath, 'voice', 'models') : '',
         // Local desktop identity: the backend reads this instead of a
         // cwd-relative .akansha-auth.json, so a packaged install needs no
         // token file and no developer setup. On a single-owner desktop the

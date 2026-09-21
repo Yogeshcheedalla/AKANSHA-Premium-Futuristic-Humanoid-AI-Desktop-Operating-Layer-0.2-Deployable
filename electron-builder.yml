@@ -50,6 +50,14 @@ extraResources:
   - from: runtime
     to: runtime
     filter: ["**/*"]
+  # Bundled OFFLINE Whisper model (free first-run voice). Produced + integrity-
+  # verified by `npm run prebundle:whisper` BEFORE packaging (dist:win depends on
+  # it), so a fresh internet-less install transcribes on its FIRST utterance with
+  # no download. Ships to <resourcesPath>/voice/models; whisperProvider resolves
+  # it via the AKANSHA_WHISPER_BUNDLE env the main process forwards.
+  - from: voice/models
+    to: voice/models
+    filter: ["**/*"]
 
 # ─────────── WINDOWS ───────────
 # build/icon.png (>= 256x256) is converted to .ico automatically by electron-builder.

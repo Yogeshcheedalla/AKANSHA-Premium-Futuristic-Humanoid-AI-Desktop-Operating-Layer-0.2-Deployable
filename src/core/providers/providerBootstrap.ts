@@ -175,8 +175,10 @@ class ProviderBootstrap {
         });
       }
 
-      // Keyless catalog trio: real inference probe each startup (cheap, 1 token).
-      for (const id of ['kilo', 'llm7', 'ovhcloud']) {
+      // Keyless providers get a REAL inference probe each startup (cheap, 1 token).
+      // pollinations is the verified no-key default → proving it here pins the free
+      // activeRoute so a fresh install answers out-of-the-box (never "connect model").
+      for (const id of ['pollinations', 'kilo', 'llm7', 'ovhcloud']) {
         const r = routes.find((x) => x.providerId === id);
         if (r && r.enabled && !r.credentialConfigured) await this.probeKeyless(id);
       }

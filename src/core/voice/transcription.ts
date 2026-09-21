@@ -17,7 +17,7 @@
 import { providerManager } from '../providers/ProviderManager';
 import { credentialVault } from '../security/CredentialVault';
 import { modelCostTier } from '../routing/costPolicy';
-import { localAsrStatus, transcribeWithWhisper } from './localWhisper/whisperRuntime';
+import { transcribeLocalWav, localAsrModuleAvailable, localAsrModel, localAsrMode } from './localWhisper/whisperProvider';
 
 export type TranscribeCode =
   | 'OK'
@@ -44,6 +44,10 @@ export interface TranscriptionResult {
   providerId?: string;
   model?: string;
   latencyMs?: number;
+  /** True when served OFFLINE by local Whisper — no cloud call, no API key. */
+  local?: boolean;
+  /** 'bundled' = verified offline asset (no internet needed); 'download' = runtime cache. */
+  asrMode?: 'bundled' | 'download';
   /** Redacted, user-safe detail. Never contains credentials. */
   detail?: string;
 }
@@ -146,24 +150,16 @@ async function callCandidate(c: TranscriptionCandidate, key: string, audio: Buff
 export async function transcribeAudio(audio: Buffer, mime: string, opts: { timeoutMs?: number } = {}): Promise<TranscriptionResult> {
   if (!audio || audio.length === 0) return { ok: false, code: 'EMPTY_AUDIO', detail: 'No audio bytes received' };
 
-  // 1. LOCAL WHISPER first — but only when it has PASSED a real transcription
-  //    test (READY). Never used merely because a binary exists.
-  if (mime.startsWith('audio/wav') || mime.startsWith('audio/x-wav')) {
-    const status = await localAsrStatus();
-    if (status.state === 'READY' && status.runtime) {
-      try {
-        const { writeFileSync, unlinkSync } = await import('node:fs');
-        const { tmpdir } = await import('node:os');
-        const { join } = await import('node:path');
-        const wav = join(tmpdir(), `akansha-asr-${Date.now()}.wav`);
-        writeFileSync(wav, audio);
-        try {
-          const t0 = Date.now();
-          const { text } = await transcribeWithWhisper(status.runtime, wav);
-          if (text) return { ok: true, code: 'OK', text, providerId: 'local-whisper', model: status.runtime.version, latencyMs: Date.now() - t0 };
-        } finally { try { unlinkSync(wav); } catch { /* ignore */ } }
-      } catch { /* fall through to cloud */ }
-    }
+  // 1. LOCAL WHISPER first (transformers.js, offline, no key) — PATH A. Only used
+  //    when the module is actually loadable here; a real transcription result is
+  //    returned. On any failure we fall through to cloud (never a fake success).
+  if ((mime.startsWith('audio/wav') || mime.startsWith('audio/x-wav') || mime === 'audio/pcm') && localAsrModuleAvailable()) {
+    try {
+      const { text, latencyMs } = await transcribeLocalWav(audio);
+      const proven = { local: true, asrMode: localAsrMode() ?? undefined, model: localAsrModel(), providerId: 'local-whisper', latencyMs } as const;
+      if (text) return { ok: true, code: 'OK', text, ...proven };
+      if (text === '') return { ok: true, code: 'OK', text: '', ...proven };
+    } catch { /* local unavailable/failed → try cloud */ }
   }
 
   // 2. Cloud providers (free-tier first), through the existing fabric + vault.

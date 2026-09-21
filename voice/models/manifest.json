@@ -1,0 +1,47 @@
+{
+  "model": "Xenova/whisper-base.en",
+  "source": "https://huggingface.co/Xenova/whisper-base.en",
+  "revision": "95bf40a508535962c6483ead40270b2e32267508",
+  "format": "ONNX fp32 (encoder_model + decoder_model_merged) loaded by @huggingface/transformers",
+  "architecture": "x64",
+  "runtime": "@huggingface/transformers 3.8.1 + onnxruntime-node (CPU)",
+  "generatedAt": "2026-09-21T14:37:32.205Z",
+  "files": [
+    {
+      "path": "config.json",
+      "sha256": "5c390f2c6ba84ddeb7e362cd8b2123832911407850174e64d7081ccc36df2d64",
+      "bytes": 2202
+    },
+    {
+      "path": "generation_config.json",
+      "sha256": "1e57ed56ad1bd7f08a49ece7fe7daada674573805a35f8bdbbe68380aab5b1ee",
+      "bytes": 1500
+    },
+    {
+      "path": "preprocessor_config.json",
+      "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d",
+      "bytes": 339
+    },
+    {
+      "path": "tokenizer.json",
+      "sha256": "c6ee8f089220a5b1188f6426456772572671c6141ae007eecb83c6a8349f5deb",
+      "bytes": 2128494
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sha256": "e082c1ad251541bf277967a703252cddd4bb37a71a43737e03d050c22ec08238",
+      "bytes": 835
+    },
+    {
+      "path": "onnx/encoder_model.onnx",
+      "sha256": "3af4d8b7515f01f1c313afe0d691768ff084169b8e1ec1cb4d975ce2ac465f6e",
+      "bytes": 82474863
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx",
+      "sha256": "e2b3d8e71a16e9462c2849ffb79b2966da800997aab299bfb9a754ba3caa54c1",
+      "bytes": 208558935
+    }
+  ],
+  "totalBytes": 293167168
+}

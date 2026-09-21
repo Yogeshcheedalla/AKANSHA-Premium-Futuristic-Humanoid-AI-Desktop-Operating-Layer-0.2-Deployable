@@ -350,8 +350,8 @@ export class WindowsComputerUseProvider implements ComputerUseProvider {
       arguments: args,
       titleHint,
       launch: 'win32',
-      pollIterations: 14,
-      pollIntervalMs: 400,
+      pollIterations: 24,
+      pollIntervalMs: 500,
     });
     return { found: !!r.found, processAlive: !!r.processAlive, pid: r.pid ?? undefined, title: r.title ?? undefined };
   }

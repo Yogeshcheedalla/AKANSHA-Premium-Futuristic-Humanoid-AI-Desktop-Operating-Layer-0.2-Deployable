@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
     const result = await transcribeAudio(Buffer.from(bytes), mime);
     if (result.ok) {
-      return NextResponse.json({ ok: true, text: result.text, provider: result.providerId, model: result.model, latencyMs: result.latencyMs });
+      return NextResponse.json({ ok: true, text: result.text, provider: result.providerId, model: result.model, latencyMs: result.latencyMs, local: result.local ?? false, asrMode: result.asrMode ?? null });
     }
     const status =
       result.code === 'NO_TRANSCRIPTION_PROVIDER' || result.code === 'EMPTY_AUDIO' ? 503 :

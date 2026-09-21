@@ -97,19 +97,26 @@ export function registerBrowserCapabilities(deps: {
       if (!/\.exe$/i.test(exe) || /[;&|<>`$\n\r]/.test(exe) || !procName || /[;&|<>`$\n\r]/.test(procName)) {
         return fail('UNKNOWN', 'validate', 'A resolved executable and process name are required.');
       }
-      const obs = await provider.launchExe(exe, args, titleHint);
-      const pe = await provider.processExists([procName]);
-      // With a titleHint, require an OBSERVED WINDOW (a process that is always
-      // running, like explorer.exe, must not fake success). Otherwise use process.
-      const verifiedByWindow = !!titleHint && obs.found;
-      const verifiedByProcess = !titleHint && pe.running;
-      if (!(verifiedByWindow || verifiedByProcess)) {
-        return fail('RUNTIME_START_FAILED', 'verify', `${p.label || procName} did not start (no ${titleHint ? 'matching window' : procName + ' process'} observed).`);
+      let obs = await provider.launchExe(exe, args, titleHint);
+      let pe = await provider.processExists([procName]);
+      // Slow cold-start windows (e.g. Windows Settings) may appear after the
+      // first poll — re-check the dedicated process a few times before failing.
+      for (let tries = 0; !(obs.found || pe.running) && tries < 8; tries++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        pe = await provider.processExists([procName]);
+        if (pe.running) break;
+      }
+      // Verified by an observed matching window OR by the dedicated target
+      // process running (e.g. SystemSettings for Windows Settings, where the
+      // UIA window title is hosted by ApplicationFrameHost and unreliable to
+      // match). Still NO EVIDENCE = NO SUCCESS.
+      if (!(obs.found || pe.running)) {
+        return fail('RUNTIME_START_FAILED', 'verify', `${p.label || procName} did not start (no matching window or ${procName} process observed).`);
       }
       const evidence: Evidence = {
         kind: 'process', observed: true,
         summary: `launched ${p.label || procName}${obs.title ? ` — window "${obs.title}"` : ` (pid ${pe.pid ?? obs.pid ?? '?'})`}`,
-        data: { executable: exe, processName: procName, pid: pe.pid ?? obs.pid ?? null, title: obs.title ?? null, verifiedBy: verifiedByWindow ? 'window' : 'process' },
+        data: { executable: exe, processName: procName, pid: pe.pid ?? obs.pid ?? null, title: obs.title ?? null, verifiedBy: obs.found ? 'window' : 'process' },
       };
       return { output: { ...obs, pid: pe.pid ?? obs.pid }, evidence };
     },
