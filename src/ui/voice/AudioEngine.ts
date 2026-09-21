@@ -17,6 +17,7 @@
  * It NEVER fabricates readiness: if mic/ASR/TTS are unavailable, capabilities()
  * reports false and the UI must show the truth.
  */
+import { AUDIO_CONSTRAINTS, readAudioHealth, decideEndpoint, decideBargeIn, type AudioHealth } from '@/core/voice/audioControl';
 
 export type VoiceState =
   | 'MUTED'
@@ -145,6 +146,17 @@ export class AudioEngine {
   private lastVoiceAt = 0;
   private asrFailures = 0;
 
+  // Conversational audio control.
+  readonly SILENCE_STOP_MS = 700;
+  private audioHealth: AudioHealth | null = null;
+  private speechStartAt = 0;
+  private nearEndSpeechStart = 0;
+  private partialStableAt = 0;
+  private discardNext = false;
+
+  /** The ACTUAL applied audio processing (AEC/NS/AGC), verified from the live track. */
+  getAudioHealth(): AudioHealth | null { return this.audioHealth; }
+
   // ── Pure, testable logic (no DOM) ────────────────────────────────────
   canTransition(to: VoiceState): boolean {
     return this.state === to || ALLOWED[this.state].includes(to);
@@ -221,7 +233,12 @@ export class AudioEngine {
       return { ok: true };
     }
     try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+      // VERIFY the audio processing the browser ACTUALLY applied (not assumed).
+      try {
+        const track = this.mediaStream.getAudioTracks()[0];
+        if (track && typeof track.getSettings === 'function') this.audioHealth = readAudioHealth(track.getSettings());
+      } catch { /* older impls: leave audioHealth null (unverified) */ }
       const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
       this.audioCtx = new Ctx();
       const source = this.audioCtx.createMediaStreamSource(this.mediaStream);
@@ -237,13 +254,27 @@ export class AudioEngine {
         const rms = Math.sqrt(sum / data.length);
         const speaking = rms > 0.02;
         const now = Date.now();
-        if (speaking) this.lastVoiceAt = now;
-        // Continuous server-ASR: open a segment when the user starts speaking,
-        // close + transcribe it after a sustained silence gap.
+        if (speaking) { if (!this.lastVoiceAt || now - this.lastVoiceAt > this.SILENCE_STOP_MS) this.speechStartAt = now; this.lastVoiceAt = now; }
+
+        // BARGE-IN: while Akansha is speaking, sustained near-end speech stops TTS
+        // and starts a new turn; a click/fan (short/low) does not.
+        if (this.speaking && decideBargeIn({ assistantSpeaking: true, nearEndSpeechMs: now - (this.nearEndSpeechStart || now), energy: rms, threshold: 0.05, minSpeechMs: 260 })) {
+          if (!this.nearEndSpeechStart) this.nearEndSpeechStart = now;
+          if (now - this.nearEndSpeechStart >= 260) { this.nearEndSpeechStart = 0; this.bargeIn(); }
+        } else if (!speaking) {
+          this.nearEndSpeechStart = 0;
+        }
+
+        // Continuous server-ASR with real endpointing (not a fixed silence cut).
         if (this.serverAsrActive) {
-          const act = decideSegment(!!this.recorder, speaking, now - (this.lastVoiceAt || now), { ttsSpeaking: this.speaking });
-          if (act === 'start') { this.beginSegment(); if (this.state !== 'LISTENING') this.transition('LISTENING'); }
-          else if (act === 'stop') this.endSegment();
+          const speechMs = this.speechStartAt ? now - this.speechStartAt : 0;
+          const trailingSilenceMs = this.lastVoiceAt ? now - this.lastVoiceAt : 0;
+          if (!this.recorder && speaking) { this.beginSegment(); this.partialStableAt = now; if (this.state !== 'LISTENING') this.transition('LISTENING'); }
+          else if (this.recorder) {
+            const act = decideEndpoint({ speechMs, trailingSilenceMs, partialStableMs: now - (this.partialStableAt || now), minSpeechMs: 300, baseTrailingMs: this.SILENCE_STOP_MS });
+            if (act === 'finalize') this.endSegment();
+            else if (act === 'reject') this.discardSegment();
+          }
         }
         if (!this.recorder) {
           const next = this.decideVad(this.state, speaking);
@@ -334,8 +365,10 @@ export class AudioEngine {
       rec.onstop = () => {
         this.recorder = null;
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        // Sub-300ms blips are noise, not commands — drop honestly, don't send.
-        if (Date.now() - this.segmentStartedAt < 300 || blob.size < 1000) {
+        const discard = this.discardNext; this.discardNext = false;
+        this.speechStartAt = 0; this.partialStableAt = 0;
+        // Sub-300ms blips or an endpoint 'reject' are noise, not commands — drop honestly.
+        if (discard || Date.now() - this.segmentStartedAt < 300 || blob.size < 1000) {
           if (this.state === 'LISTENING') this.transition('STANDBY');
           return;
         }
@@ -348,6 +381,12 @@ export class AudioEngine {
   }
 
   private endSegment() {
+    if (this.recorder) { try { this.recorder.stop(); } catch { this.recorder = null; } }
+  }
+
+  /** Stop the current segment and DROP it (noise blip below the speech floor). */
+  private discardSegment() {
+    this.discardNext = true;
     if (this.recorder) { try { this.recorder.stop(); } catch { this.recorder = null; } }
   }
 
