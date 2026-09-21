@@ -99,11 +99,17 @@ export function registerBrowserCapabilities(deps: {
       }
       const obs = await provider.launchExe(exe, args, titleHint);
       const pe = await provider.processExists([procName]);
-      if (!pe.running) return fail('RUNTIME_START_FAILED', 'verify', `${p.label || procName} did not start (no ${procName} process observed).`);
+      // With a titleHint, require an OBSERVED WINDOW (a process that is always
+      // running, like explorer.exe, must not fake success). Otherwise use process.
+      const verifiedByWindow = !!titleHint && obs.found;
+      const verifiedByProcess = !titleHint && pe.running;
+      if (!(verifiedByWindow || verifiedByProcess)) {
+        return fail('RUNTIME_START_FAILED', 'verify', `${p.label || procName} did not start (no ${titleHint ? 'matching window' : procName + ' process'} observed).`);
+      }
       const evidence: Evidence = {
         kind: 'process', observed: true,
-        summary: `launched ${p.label || procName} (pid ${pe.pid ?? obs.pid ?? '?'})`,
-        data: { executable: exe, processName: procName, pid: pe.pid ?? obs.pid ?? null, title: obs.title ?? null },
+        summary: `launched ${p.label || procName}${obs.title ? ` — window "${obs.title}"` : ` (pid ${pe.pid ?? obs.pid ?? '?'})`}`,
+        data: { executable: exe, processName: procName, pid: pe.pid ?? obs.pid ?? null, title: obs.title ?? null, verifiedBy: verifiedByWindow ? 'window' : 'process' },
       };
       return { output: { ...obs, pid: pe.pid ?? obs.pid }, evidence };
     },

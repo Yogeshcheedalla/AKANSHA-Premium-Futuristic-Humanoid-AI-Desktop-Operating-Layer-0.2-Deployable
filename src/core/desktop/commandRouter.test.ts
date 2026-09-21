@@ -39,3 +39,40 @@ test('shell-injection text is rejected (null)', async () => {
   assert.equal(await routeCommand('open notepad && whoami'), null);
   assert.equal(await routeCommand('what is the weather'), null);
 });
+
+test('REGRESSION "open files" → File Explorer, never VLC/website', async () => {
+  const r = await routeCommand('open files');
+  assert.equal(r?.actionId, 'desktop.app.launchResolved');
+  assert.equal(r?.payload.executable, 'explorer.exe');
+  assert.equal(r?.payload.label, 'File Explorer');
+});
+
+test('REGRESSION "open settings" → Windows Settings, never settings.com', async () => {
+  const r = await routeCommand('open settings');
+  assert.equal(r?.actionId, 'desktop.app.launchResolved');
+  assert.equal(r?.payload.label, 'Windows Settings');
+  assert.ok(Array.isArray(r?.payload.args) && (r!.payload.args as string[]).some((a) => /ms-settings/i.test(a)));
+});
+
+test('"open settings.com" → WEBSITE, not Windows Settings', async () => {
+  const r = await routeCommand('open settings.com');
+  assert.equal(r?.actionId, 'browser.navigate');
+  assert.match(String(r?.payload.url), /settings\.com/);
+});
+
+test('"open downloads" → Downloads folder (system entity), not web', async () => {
+  const r = await routeCommand('open downloads');
+  assert.equal(r?.actionId, 'desktop.app.launchResolved');
+  assert.equal(r?.payload.label, 'Downloads');
+});
+
+test('generic word with no system/app/site meaning → null (never a fabricated URL)', async () => {
+  assert.equal(await routeCommand('open zzzqq'), null);
+});
+
+test('natural variants resolve identically to File Explorer', async () => {
+  for (const s of ['open files', 'launch file explorer', 'show me my files', 'bring up explorer']) {
+    const r = await routeCommand(s);
+    assert.equal(r?.payload.label, 'File Explorer', s);
+  }
+});

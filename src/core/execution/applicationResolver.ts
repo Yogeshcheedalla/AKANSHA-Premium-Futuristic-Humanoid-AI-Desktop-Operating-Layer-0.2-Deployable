@@ -94,9 +94,11 @@ async function discoverInstalled(): Promise<{ name: string; exe: string }[]> {
 const norm = (s: string) => s.toLowerCase().replace(/\.exe$/, '').trim();
 const score = (q: string, name: string) => {
   const n = norm(name);
+  if (!q || !n) return 0;
   if (n === q) return 0.98;
-  if (n.startsWith(q) || q.startsWith(n)) return 0.9;
-  if (n.includes(q) || q.includes(n)) return 0.75;
+  if (n.startsWith(q) && q.length >= 3) return 0.9;
+  if (q.startsWith(n) && n.length >= 3) return 0.85;
+  if (n.includes(q) && q.length >= 5) return 0.75;
   return 0;
 };
 

@@ -15,6 +15,7 @@
  */
 import { resolveApp } from '@/core/execution/appRegistry';
 import { resolveApplication, resolveSite, KNOWN_SITES } from '@/core/execution/applicationResolver';
+import { resolveWindowsSystemEntity, looksLikeDomain } from '@/core/execution/windowsSystemEntities';
 
 export interface RoutedCommand {
   actionId: 'desktop.app.launch' | 'desktop.app.close' | 'desktop.window.focus' | 'browser.navigate' | 'desktop.app.launchResolved';
@@ -69,6 +70,14 @@ export async function routeCommand(text: string): Promise<RoutedCommand | null> 
     return { actionId: 'desktop.app.launch', payload: { application: browser }, label: browser }; // let fabric report APP_NOT_FOUND honestly
   }
 
+  // 0. A WINDOWS SYSTEM ENTITY resolves first — before apps and before any web
+  //    interpretation. This is what stops "open files"→VLC and "open settings"→
+  //    settings.com. Only native, verifiable capabilities are in this registry.
+  const sys = resolveWindowsSystemEntity(target);
+  if (sys) {
+    return { actionId: 'desktop.app.launchResolved', payload: { executable: sys.executable, args: sys.args, processName: sys.processName, titleHint: sys.titleHint, label: sys.label }, label: sys.label };
+  }
+
   // 1. A curated/known APPLICATION wins (so "open notepad" is never read as a site).
   const app = resolveApp(target);
   if (app) return { actionId: 'desktop.app.launch', payload: { application: app.aliases[0] }, label: app.aliases[0] };
@@ -78,14 +87,18 @@ export async function routeCommand(text: string): Promise<RoutedCommand | null> 
     return { actionId: 'browser.navigate', payload: { url: KNOWN_SITES[target], browser: browser || undefined }, label: `${target}${browser ? ` in ${browser}` : ''}` };
   }
 
-  // 3. Real installed-app discovery (e.g. "antigravity") before guessing a domain.
+  // 3. Real installed-app discovery (e.g. "antigravity").
   const r = await resolveApplication(target);
   if (r) return { actionId: 'desktop.app.launchResolved', payload: { executable: r.executable, processName: r.processName, titleHint: r.titleHint, label: r.canonicalName }, label: r.canonicalName };
 
-  // 4. Domain-like single token → best-effort website.
-  const url = resolveSite(target);
-  if (url) return { actionId: 'browser.navigate', payload: { url, browser: browser || undefined }, label: `${target}${browser ? ` in ${browser}` : ''}` };
+  // 4. An EXPLICIT web target only — a real domain (settings.com) or a known site.
+  //    NEVER fabricate word.com for a bare/generic word.
+  if (looksLikeDomain(target)) {
+    const url = resolveSite(target) || `https://${target.replace(/^https?:\/\//, '')}`;
+    return { actionId: 'browser.navigate', payload: { url, browser: browser || undefined }, label: `${target}${browser ? ` in ${browser}` : ''}` };
+  }
 
-  // Unknown → let the fabric/orchestrator report APP_NOT_FOUND (never fake).
-  return { actionId: 'desktop.app.launch', payload: { application: target }, label: target };
+  // Unresolved → let the orchestrator/model handle it or report not-found. Do NOT
+  // guess a website or a vague application.
+  return null;
 }
