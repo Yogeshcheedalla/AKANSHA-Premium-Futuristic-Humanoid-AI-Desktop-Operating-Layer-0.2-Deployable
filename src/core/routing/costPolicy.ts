@@ -22,7 +22,7 @@ export interface CostHint { isLocal?: boolean; freeModel?: boolean; }
  */
 export function modelCostTier(providerId: string, modelId?: string, hint: CostHint = {}): CostTier {
   if (hint.isLocal || providerId === 'local' || providerId === 'ollama') return 'local';
-  if (providerId === 'pollinations') return 'free'; // keyless free default
+  if (providerId === 'pollinations' || providerId === 'omniroute') return 'free'; // keyless free default + local OmniRoute free gateway
   const m = (modelId || '').toLowerCase();
   if (hint.freeModel || m === 'openrouter/free' || m.endsWith(':free') || m.includes('/free')) return 'free';
   if (m) return 'paid'; // a known model that is not free-flagged is treated as paid-capable

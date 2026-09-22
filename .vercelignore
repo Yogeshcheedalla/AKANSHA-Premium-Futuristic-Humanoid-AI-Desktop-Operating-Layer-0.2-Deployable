@@ -8,6 +8,10 @@ model-cache/
 *.gguf
 *.bin
 *.safetensors
+# Desktop-only OFFLINE Whisper (transformers.js) — never ships to the web; its
+# 199 MB .onnx decoder trips Vercel's 100 MB per-file upload limit.
+*.onnx
+voice/models/Xenova/
 *.exe
 *.dmg
 *.msi

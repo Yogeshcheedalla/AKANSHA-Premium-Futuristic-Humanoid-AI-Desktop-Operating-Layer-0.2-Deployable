@@ -75,6 +75,12 @@ export class ProviderManager {
         fallbackPriority: 10,
       },
       { id: 'local-server', name: 'Local Inference Server', type: 'local', baseUrl: 'http://127.0.0.1:8080', enabled: false, fallbackPriority: 60 },
+      // OmniRoute — a LOCAL OpenAI-compatible FREE-routing gateway
+      // (github.com/diegosouzapw/OmniRoute). One endpoint (`auto`) auto-routes and
+      // falls back across its free-provider pool with no key. If it isn't running,
+      // the startup probe marks it UNAVAILABLE and routing degrades to Pollinations
+      // — never a false "free". Base URL overridable via OMNIROUTE_BASE_URL.
+      { id: 'omniroute', name: 'OmniRoute (Free Gateway)', type: 'openai-compatible', baseUrl: process.env.OMNIROUTE_BASE_URL || 'http://127.0.0.1:20128/v1', keyless: true, defaultModel: process.env.OMNIROUTE_MODEL || 'auto', enabled: true, fallbackPriority: 52 },
       // Keyless free default — so a fresh install can ANSWER before any setup.
       // Health-probed like every provider; only used when a live probe succeeds.
       { id: 'pollinations', name: 'Free AI (no key)', type: 'openai-compatible', baseUrl: 'https://text.pollinations.ai', keyless: true, defaultModel: 'openai', enabled: true, fallbackPriority: 55 },
