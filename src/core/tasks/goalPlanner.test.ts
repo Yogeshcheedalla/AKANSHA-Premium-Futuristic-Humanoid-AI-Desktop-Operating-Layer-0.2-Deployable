@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { capabilitiesFor, primaryCapability, missingDeliveryPlatform } from '../routing/capabilityRegistry';
 import { planGoal, toTaskSteps } from './goalPlanner';
+import { preferenceMemory } from '../memory/preferenceMemory';
 
 test('capabilityRegistry maps natural language to capabilities', () => {
   assert.ok(capabilitiesFor('send this file to Rahul').includes('communication'));
@@ -31,4 +32,17 @@ test('a single action stays a single subtask (no spurious task)', async () => {
   const subs = await planGoal('open notepad');
   assert.equal(subs.length, 1);
   assert.equal(subs[0].dependsOn.length, 0);
+});
+
+test('stored preference steers the platform (memory influences planning); unset still asks', async () => {
+  preferenceMemory.set('delivery', 'platform', 'email');
+  try {
+    const subs = await planGoal('open notepad and send it to Rahul');
+    assert.ok(!subs.some((s) => s.clarify), 'preference present -> no clarify');
+    assert.ok(subs.some((s) => s.label === 'send via email'), 'uses stored platform');
+  } finally {
+    preferenceMemory.clear('delivery');
+  }
+  const back = await planGoal('open notepad and send it to Rahul');
+  assert.ok(back.some((s) => s.clarify), 'no preference -> parks to ask');
 });

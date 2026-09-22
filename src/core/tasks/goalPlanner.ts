@@ -13,6 +13,7 @@
 import { routeCommand } from '../desktop/commandRouter';
 import type { TaskStep } from './TaskManager';
 import { capabilitiesFor, missingDeliveryPlatform } from '../routing/capabilityRegistry';
+import { preferenceMemory } from '../memory/preferenceMemory';
 
 export interface Subtask {
   id: string;
@@ -58,9 +59,15 @@ export async function planGoal(goal: string): Promise<Subtask[]> {
     if (lastApp && /\b(it|this|that|the app|the window)\b/i.test(part) && !/\b(notepad|chrome|brave|edge|firefox|youtube|calculator|calc|paint)\b/i.test(part)) {
       part = part.replace(/\b(it|this|that|the app|the window)\b/i, lastApp);
     }
-    // A delivery with no platform → CLARIFY (park for the user), don't guess.
+    // A delivery with no platform: use a stored preference if one exists (memory
+    // influences planning), otherwise CLARIFY (park for the user) — never guess.
     const miss = missingDeliveryPlatform(part);
-    if (miss) { add({ label: `ask ${miss.field}`, capability: 'communication', clarify: miss }); continue; }
+    if (miss) {
+      const pref = preferenceMemory.resolve('delivery', 'platform');
+      if (pref.value) add({ label: `send via ${pref.value}`, capability: 'communication' });
+      else add({ label: `ask ${miss.field}`, capability: 'communication', clarify: miss });
+      continue;
+    }
 
     const routed = await routeCommand(part);
     if (routed) {
