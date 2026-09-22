@@ -249,7 +249,8 @@ export async function POST(request: Request) {
           const { planGoal, toTaskSteps } = await import('@/core/tasks/goalPlanner');
           const { taskManager } = await import('@/core/tasks/TaskManager');
           const subtasks = await planGoal(text);
-          if (subtasks.length >= 2) {
+          const actionable = subtasks.filter((s) => s.actionId || s.clarify || s.label.startsWith('wait '));
+          if (actionable.length >= 2) {
             const steps = toTaskSteps(subtasks);
             const t = taskManager.create(text, steps, 'local');
             taskManager.start(t.taskId);

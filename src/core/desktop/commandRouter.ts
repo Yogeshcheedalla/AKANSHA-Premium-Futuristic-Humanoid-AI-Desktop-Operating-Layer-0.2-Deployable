@@ -27,8 +27,8 @@ const BROWSER_WORDS = new Set(['brave', 'chrome', 'google chrome', 'edge', 'micr
 const OPEN = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:open|launch|start|run|go to|navigate to|bring up|fire up|take me to|show me|pull up)\s+(.+?)\s*[.!?,]*$/i;
 const CLOSE = /^\s*(?:please\s+|can you\s+)?(?:close|quit|exit|kill|terminate|stop|shut)\s+(.+?)\s*[.!?,]*$/i;
 const FOCUS = /^\s*(?:please\s+|can you\s+)?(?:focus|activate|raise|foreground|switch to)\s+(.+?)\s*[.!?,]*$/i;
-// "youtube in brave", "gmail in google chrome"
-const IN_BROWSER = /^(.+?)\s+(?:in|using|with|on)\s+(brave|chrome|google chrome|edge|microsoft edge|firefox|mozilla firefox|browser)\s*$/i;
+// "youtube in brave", "youtube in the brave browser", "gmail in google chrome"
+const IN_BROWSER = /^(.+?)\s+(?:in|using|with|on)\s+(?:the\s+)?(brave|chrome|google chrome|edge|microsoft edge|firefox|mozilla firefox|browser)(?:\s+browser)?\s*$/i;
 
 const clean = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 

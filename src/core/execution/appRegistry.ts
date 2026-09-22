@@ -36,15 +36,40 @@ export const APP_REGISTRY: AppSpec[] = [
   { aliases: ['firefox', 'mozilla firefox'], exe: '%PROGRAMFILES%\\Mozilla Firefox\\firefox.exe', titleHint: 'Firefox', processName: 'firefox', launch: 'win32' },
 ];
 
-const norm = (s: string) => s.toLowerCase().trim();
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+// Generic words that must NOT let a longer, more specific phrase resolve to a
+// particular app (e.g. the word "browser" inside "the brave browser" must not
+// hijack the match to Edge). They only apply when they ARE the whole query.
+const GENERIC = new Set(['browser', 'app', 'application', 'program']);
+
+/** True when `alias` occurs in `q` as a whole word/phrase (bounded by non-letters). */
+function hasPhrase(q: string, alias: string): boolean {
+  const esc = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z])${esc}([^a-z]|$)`, 'i').test(q);
+}
 
 export function resolveApp(query: string): AppSpec | null {
   const q = norm(query);
   if (!q) return null;
+  const words = q.split(' ');
+
+  // 1) An exact alias match always wins.
   for (const spec of APP_REGISTRY) {
-    if (spec.aliases.some((a) => q === a || q.includes(a) || a.includes(q))) return spec;
+    if (spec.aliases.some((a) => q === a)) return spec;
   }
-  return null;
+
+  // 2) Otherwise the MOST SPECIFIC whole-word/phrase alias wins (longest alias).
+  //    A generic word ("browser") never matches inside a multi-word phrase, so
+  //    "youtube in the brave browser" cannot resolve to Edge.
+  let best: { spec: AppSpec; len: number } | null = null;
+  for (const spec of APP_REGISTRY) {
+    for (const a of spec.aliases) {
+      if (GENERIC.has(a) && words.length > 1) continue;
+      if (hasPhrase(q, a) && (!best || a.length > best.len)) best = { spec, len: a.length };
+    }
+  }
+  return best ? best.spec : null;
 }
 
 export function expandEnv(p: string): string {

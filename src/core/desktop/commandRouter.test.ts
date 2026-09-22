@@ -76,3 +76,31 @@ test('natural variants resolve identically to File Explorer', async () => {
     assert.equal(r?.payload.label, 'File Explorer', s);
   }
 });
+
+// ── REGRESSION: the reported Brave → "edge" mislabel (generic word "browser"
+//    inside a longer phrase must never hijack the match to Edge) ──────────────
+
+test('REGRESSION "open youtube in the brave browser" → YouTube in Brave, never Edge', async () => {
+  const r = await routeCommand('open youtube in the brave browser');
+  assert.equal(r?.actionId, 'browser.navigate');
+  assert.equal(r?.payload.url, 'https://www.youtube.com/');
+  assert.equal(r?.payload.browser, 'brave');
+  assert.doesNotMatch(String(r?.payload.application || ''), /edge/i);
+});
+
+test('"open brave browser" (browser named with the word "browser") → launch Brave, not Edge', async () => {
+  const r = await routeCommand('open brave browser');
+  assert.equal(r?.actionId, 'desktop.app.launch');
+  assert.equal(r?.payload.application, 'brave');
+});
+
+test('generic word alone "open browser" may still default to Edge', async () => {
+  const r = await routeCommand('open browser');
+  assert.equal(r?.actionId, 'desktop.app.launch');
+  assert.equal(r?.payload.application, 'edge');
+});
+
+test('REGRESSION compound "open X in the brave browser and ... " never resolves to Edge', async () => {
+  const r = await routeCommand('open the brave browser and search for something and I need a timestamp');
+  assert.notEqual(String(r?.payload.application || ''), 'edge');
+});

@@ -13,7 +13,7 @@ import {
   __resetLocalTranscriber,
 } from './whisperProvider';
 import { encodeWavPcm16 } from '../audioControl';
-import { listCandidates } from '../transcription';
+import { listCandidates, transcribeAudio } from '../transcription';
 import { systemDimensions } from '@/core/runtime/systemStatus';
 
 // ── PATH A (free offline Whisper) must NEVER depend on a key. These tests lock
@@ -65,6 +65,12 @@ test('free local ASR never reports everSucceeded on module presence alone (no fa
 test('listCandidates is empty without keys — free local path does not depend on it', () => {
   const rows = [{ providerId: 'x', name: 'X', type: 'openai', baseUrl: 'https://api.openai.com/v1', enabled: true, credentialConfigured: false, settings: {} }];
   assert.deepEqual(listCandidates(rows), []); // no credential → no cloud candidate; local still runs first in transcribeAudio
+});
+
+test('empty audio returns EMPTY_AUDIO immediately — never a silent cloud/paid fallback', async () => {
+  const r = await transcribeAudio(Buffer.alloc(0), 'audio/wav');
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'EMPTY_AUDIO');
 });
 
 test('systemDimensions reports free offline voice as AVAILABLE (not UNAVAILABLE, not faked READY) when module loads', () => {

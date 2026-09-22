@@ -54,3 +54,20 @@ test('stored preference steers the platform (memory influences planning); unset 
   const back = await planGoal('open notepad and send it to Rahul');
   assert.ok(back.some((s) => s.clarify), 'no preference -> parks to ask');
 });
+
+// ── REGRESSION: the reported "3 steps (edge, …)" failure. The route only fires a
+//    durable mission when there are >= 2 ACTIONABLE subtasks; a single "open X in
+//    the brave browser" plus descriptive clauses must NOT become a background job.
+test('REGRESSION an "open site in browser and ..." sentence is one action, not a mission', async () => {
+  const subs = await planGoal(
+    'Open YouTube in the Brave browser and search for the Baahubali movie in Telugu and I need the 2:30 minute in that movie.'
+  );
+  const actionable = subs.filter((s) => s.actionId || s.clarify || s.label.startsWith('wait '));
+  assert.equal(actionable.length, 1, 'only the browser open is actionable → not a durable multi-step');
+
+  const nav = actionable[0];
+  assert.equal(nav.actionId, 'browser.navigate');
+  assert.equal(nav.payload?.url, 'https://www.youtube.com/');
+  assert.equal(nav.payload?.browser, 'brave');
+  assert.notEqual(String(nav.payload?.application || ''), 'edge');
+});
