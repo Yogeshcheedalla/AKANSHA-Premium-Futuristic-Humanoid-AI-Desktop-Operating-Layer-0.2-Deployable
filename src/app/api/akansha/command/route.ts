@@ -129,6 +129,25 @@ export async function POST(request: Request) {
 
       // Every branch below MUST release the resource budget exactly once.
       try {
+        // ── RESUME: a parked WAITING_FOR_USER mission consumes this turn as its
+        //    answer and resumes from the blocked step (completed work is NOT re-run).
+        {
+          const { taskManager } = await import('@/core/tasks/TaskManager');
+          const waiting = taskManager.list().find((t) => t.status === 'WAITING_FOR_USER');
+          const step = waiting ? waiting.steps[waiting.currentStep] : undefined;
+          if (waiting && step && step.kind === 'clarify') {
+            const resumed = taskManager.answer(waiting.taskId, step.field, text);
+            return {
+              ok: true, requestId, intent: 'clarification_response', tier: 'tier0', path: 'mission-resume',
+              usedModel: false, status: resumed?.status || 'RUNNING',
+              response: `Got it — using "${text}". Resuming "${waiting.goal}" from the blocked step.`,
+              task: { taskId: waiting.taskId, status: resumed?.status },
+              trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['Answered a WAITING_FOR_USER mission; resumed without re-running completed steps.'] },
+              latencyMs: Date.now() - started,
+            };
+          }
+        }
+
         // ── TIER 0: deterministic — zero model calls ──────────────────
         const deterministic = deterministicAnswer(text);
         if (deterministic) {
@@ -227,18 +246,19 @@ export async function POST(request: Request) {
         //    response finishing must NOT end the task — the executor keeps it
         //    alive and it survives restart. Only explicit cancel ends it.
         {
-          const { planTask } = await import('@/core/tasks/taskPlanner');
+          const { planGoal, toTaskSteps } = await import('@/core/tasks/goalPlanner');
           const { taskManager } = await import('@/core/tasks/TaskManager');
-          const steps = await planTask(text);
-          if (steps && steps.length >= 2) {
+          const subtasks = await planGoal(text);
+          if (subtasks.length >= 2) {
+            const steps = toTaskSteps(subtasks);
             const t = taskManager.create(text, steps, 'local');
             taskManager.start(t.taskId);
             return {
               ok: true, requestId, intent: intent.intent, tier: 'tier0', path: 'background-task',
               usedModel: false, status: 'RUNNING',
-              response: `Understood, Boss. I'm continuing this in the background as a task (${steps.length} steps: ${steps.map((s) => s.label).join(', ')}). I'll tell you when it's complete, blocked, or failed.`,
-              task: { taskId: t.taskId, steps: steps.map((s) => s.label) },
-              trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['Durable background task via TaskManager.'] },
+              response: `Working on it, Boss — ${subtasks.length} steps (${subtasks.map((s) => s.label).join(', ')}). I'll ask only if I need a decision from you, and tell you when it's done, blocked, or failed.`,
+              task: { taskId: t.taskId, steps: subtasks.map((s) => s.label) },
+              trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['Durable mission via goal planner (DAG + clarify) → TaskManager.'] },
               latencyMs: Date.now() - started,
             };
           }
