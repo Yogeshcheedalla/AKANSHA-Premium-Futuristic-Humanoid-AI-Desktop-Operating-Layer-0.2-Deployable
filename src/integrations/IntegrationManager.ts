@@ -51,6 +51,14 @@ export class IntegrationManager {
     // 4. Register core skills
     this.registerCoreSkills();
 
+    // 4b. Register the vendored agent-skills methodology corpus (TDD, debugging,
+    //     planning, security-hardening, …) into the SAME SkillRegistry as guidance
+    //     skills. Best-effort — never crash startup.
+    try {
+      const { registerAgentSkills } = await import('../core/skills/agentSkills');
+      registerAgentSkills();
+    } catch { /* guidance corpus is optional */ }
+
     // 5. Sync repository-derived capabilities into the LIVE graph so routing
     //    is actually informed by the registry (not merely displayable).
     try {
