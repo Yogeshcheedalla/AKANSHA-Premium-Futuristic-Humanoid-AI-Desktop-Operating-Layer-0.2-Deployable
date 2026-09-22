@@ -25,6 +25,8 @@ export type AkanshaEventType =
   | 'task.completed'
   | 'task.failed'
   | 'task.cancelled'
+  | 'task.awaiting_user'
+  | 'task.resumed'
   | 'recovery.started'
   | 'retry.started'
   | 'replan.started'

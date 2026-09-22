@@ -17,12 +17,13 @@ import { dirname, join } from 'node:path';
 import { actionDispatcher } from '../actions/ActionDispatcher';
 import { eventBus } from '../events/EventBus';
 
-export type TaskStatus = 'CREATED' | 'PLANNING' | 'RUNNING' | 'WAITING' | 'RETRYING' | 'BLOCKED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type TaskStatus = 'CREATED' | 'PLANNING' | 'RUNNING' | 'WAITING' | 'WAITING_FOR_USER' | 'RETRYING' | 'BLOCKED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export const TERMINAL: TaskStatus[] = ['COMPLETED', 'FAILED', 'CANCELLED'];
 
 export type TaskStep =
   | { kind: 'action'; label: string; actionId: string; payload: Record<string, unknown> }
-  | { kind: 'wait'; label: string; ms: number };
+  | { kind: 'wait'; label: string; ms: number }
+  | { kind: 'clarify'; label: string; field: string; question: string; options?: string[] };
 
 export interface TaskRecord {
   taskId: string;
@@ -36,6 +37,8 @@ export interface TaskRecord {
   lastEvidence: string | null;
   failure: string | null;
   cancelRequested: boolean;
+  answers: Record<string, string>;
+  pendingQuestion: string | null;
   createdAt: number;
   updatedAt: number;
   deadlineAt: number;
@@ -79,6 +82,7 @@ class TaskManager {
     const resumed: string[] = [];
     for (const t of this.loadAll()) {
       if (TERMINAL.includes(t.status)) continue; // never resurrect a terminal task
+      if (t.status === 'WAITING_FOR_USER') continue; // parked on purpose, awaiting the user's answer
       if (Date.now() > t.deadlineAt) { t.status = 'FAILED'; t.failure = 'deadline exceeded across restart'; this.persist(t); continue; }
       // RUNNING/WAITING/RETRYING/CREATED/PLANNING → resume from currentStep.
       t.status = 'RUNNING'; t.updatedAt = Date.now(); this.persist(t);
@@ -95,6 +99,7 @@ class TaskManager {
       goal, ownerId, status: 'CREATED',
       steps: steps.slice(0, MAX_STEPS), currentStep: 0, retryCount: 0,
       checkpoint: null, lastEvidence: null, failure: null, cancelRequested: false,
+      answers: {}, pendingQuestion: null,
       createdAt: now, updatedAt: now, deadlineAt: now + DEFAULT_DEADLINE_MS,
     };
     this.persist(t);
@@ -107,6 +112,22 @@ class TaskManager {
     const t = this.tasks.get(taskId) || this.loadAll().find((x) => x.taskId === taskId);
     if (!t || TERMINAL.includes(t.status)) return t || null;
     t.cancelRequested = true; t.updatedAt = Date.now(); this.persist(t);
+    return t;
+  }
+
+  /** Supply the answer to a parked WAITING_FOR_USER mission and RESUME it. */
+  answer(taskId: string, field: string, value: string): TaskRecord | null {
+    const t = this.tasks.get(taskId) || this.loadAll().find((x) => x.taskId === taskId);
+    if (!t) return null;
+    t.answers = { ...t.answers, [field]: value };
+    t.pendingQuestion = null;
+    t.updatedAt = Date.now();
+    this.persist(t);
+    if (t.status === 'WAITING_FOR_USER') {
+      t.status = 'RUNNING'; this.persist(t);
+      eventBus.emit('task.resumed', 'TaskManager', { taskId, field, value });
+      void this.run(taskId);
+    }
     return t;
   }
 
@@ -149,6 +170,17 @@ class TaskManager {
           const r = await this.sleep(step.ms, taskId);
           if (r === 'cancelled') { const c = this.tasks.get(taskId)!; c.status = 'CANCELLED'; c.updatedAt = Date.now(); this.persist(c); return; }
           if (r === 'timeout') { const c = this.tasks.get(taskId)!; c.status = 'FAILED'; c.failure = 'deadline exceeded during wait'; c.updatedAt = Date.now(); this.persist(c); return; }
+          continue;
+        }
+
+        if (step.kind === 'clarify') {
+          if (cur.answers[step.field] === undefined) {
+            cur.status = 'WAITING_FOR_USER'; cur.pendingQuestion = step.question; cur.checkpoint = step.label;
+            cur.updatedAt = Date.now(); this.persist(cur);
+            eventBus.emit('task.awaiting_user', 'TaskManager', { taskId, field: step.field, question: step.question, options: step.options });
+            return; // park on THIS step; answer() resumes from here (completed steps are not re-run)
+          }
+          cur.pendingQuestion = null; this.persist(cur);
           continue;
         }
 
