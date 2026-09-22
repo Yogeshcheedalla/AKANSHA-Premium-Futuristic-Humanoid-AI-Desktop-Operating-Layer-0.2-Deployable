@@ -37,6 +37,17 @@ export const CAPABILITIES: Capability[] = [
 
 const BY_ID = new Map(CAPABILITIES.map((c) => [c.id, c]));
 
+/** Which specialized agent should own a capability. Agents only plan/propose;
+ *  the Action Fabric still performs the real, verified side effects. */
+const CAPABILITY_TO_AGENT: Record<string, string> = {
+  desktop: 'DesktopAgent', filesystem: 'FileAgent', coding: 'CodingAgent', compiler: 'CodingAgent',
+  browser: 'BrowserAgent', webSearch: 'ResearchAgent', communication: 'CommunicationAgent',
+  documents: 'DocumentAgent', memory: 'MemoryAgent',
+};
+export function agentFor(capabilityId: string | null): string {
+  return (capabilityId && CAPABILITY_TO_AGENT[capabilityId]) || 'GeneralAgent';
+}
+
 export function capability(id: string): Capability | undefined { return BY_ID.get(id); }
 
 /** Which capabilities a natural-language segment implies (may be several). */

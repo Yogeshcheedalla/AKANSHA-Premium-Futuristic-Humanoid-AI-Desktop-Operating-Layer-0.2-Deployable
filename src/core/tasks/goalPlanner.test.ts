@@ -34,6 +34,14 @@ test('a single action stays a single subtask (no spurious task)', async () => {
   assert.equal(subs[0].dependsOn.length, 0);
 });
 
+test('planGoal attributes each subtask to a specialized agent (agents propose; fabric executes)', async () => {
+  const subs = await planGoal('open notepad and send it to Rahul');
+  const notepad = subs.find((s) => s.capability === 'desktop');
+  const comm = subs.find((s) => s.capability === 'communication');
+  assert.equal(notepad?.agentId, 'DesktopAgent');
+  assert.equal(comm?.agentId, 'CommunicationAgent');
+});
+
 test('stored preference steers the platform (memory influences planning); unset still asks', async () => {
   preferenceMemory.set('delivery', 'platform', 'email');
   try {

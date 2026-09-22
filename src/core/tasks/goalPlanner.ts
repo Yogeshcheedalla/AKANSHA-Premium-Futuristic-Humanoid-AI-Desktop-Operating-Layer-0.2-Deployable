@@ -12,13 +12,14 @@
  */
 import { routeCommand } from '../desktop/commandRouter';
 import type { TaskStep } from './TaskManager';
-import { capabilitiesFor, missingDeliveryPlatform } from '../routing/capabilityRegistry';
+import { capabilitiesFor, missingDeliveryPlatform, agentFor } from '../routing/capabilityRegistry';
 import { preferenceMemory } from '../memory/preferenceMemory';
 
 export interface Subtask {
   id: string;
   label: string;
   capability: string | null;
+  agentId: string;
   actionId?: string;
   payload?: Record<string, unknown>;
   dependsOn: string[];
@@ -41,9 +42,9 @@ export async function planGoal(goal: string): Promise<Subtask[]> {
   let prevId = '';
   let lastApp = '';
   let n = 0;
-  const add = (s: Omit<Subtask, 'id' | 'dependsOn'>): Subtask => {
+  const add = (s: Omit<Subtask, 'id' | 'dependsOn' | 'agentId'>): Subtask => {
     const id = `s${++n}`;
-    const st: Subtask = { id, ...s, dependsOn: prevId ? [prevId] : [] };
+    const st: Subtask = { id, agentId: agentFor(s.capability), ...s, dependsOn: prevId ? [prevId] : [] };
     subtasks.push(st); prevId = id; return st;
   };
 

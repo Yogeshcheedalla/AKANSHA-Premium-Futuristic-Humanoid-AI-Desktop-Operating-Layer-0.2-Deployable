@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { waves, runDag } from './dagExecutor';
 import type { Subtask } from './goalPlanner';
 
-const s = (id: string, dependsOn: string[] = []): Subtask => ({ id, label: id, capability: null, dependsOn });
+const s = (id: string, dependsOn: string[] = []): Subtask => ({ id, label: id, capability: null, agentId: 'GeneralAgent', dependsOn });
 
 test('waves groups independent subtasks together and orders by dependency', () => {
   const graph = [s('a'), s('b'), s('c', ['a', 'b']), s('d')];
