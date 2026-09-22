@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectModel, derivePolicy, type ModelCandidate } from './modelSelection';
+import { selectModel, derivePolicy, candidatesFromRoutes, selectForTurn, type ModelCandidate } from './modelSelection';
 
 const c = (o: Partial<ModelCandidate> & { providerId: string; modelId: string }): ModelCandidate => ({
   costTier: 'free', local: false, capabilities: { chat: true }, health: 'READY', ...o,
@@ -68,6 +68,35 @@ test('paid is only offered with explicit consent flag when policy allows', () =>
   const r = selectModel({}, 'BEST_AVAILABLE', onlyPaid);
   assert.ok(r.decision);
   assert.equal(r.decision!.requiresPaidConsent, true);
+});
+
+test('candidatesFromRoutes maps providerBootstrap routes (health/costTier/local) into candidates', () => {
+  const routes = [
+    { providerId: 'openai', bestModel: 'gpt-5', costTier: 'paid', health: 'AVAILABLE', enabled: true },
+    { providerId: 'pollinations', bestModel: 'openai-fast', costTier: 'free', health: 'AVAILABLE', enabled: true },
+    { providerId: 'ollama', bestModel: 'llama-3.2-3b', costTier: 'local', health: 'AVAILABLE', enabled: true },
+    { providerId: 'gemini', bestModel: null, costTier: 'free', health: 'AVAILABLE', enabled: true }, // no model -> skipped
+    { providerId: 'groq', bestModel: 'llama', costTier: 'free', health: 'RATE_LIMITED', enabled: true },
+  ];
+  const cs = candidatesFromRoutes(routes);
+  assert.equal(cs.find((x) => x.providerId === 'gemini'), undefined); // no model excluded
+  const ollama = cs.find((x) => x.providerId === 'ollama')!;
+  assert.equal(ollama.local, true);
+  assert.equal(ollama.costTier, 'local');
+  assert.equal(cs.find((x) => x.providerId === 'groq')!.health, 'RATE_LIMITED');
+});
+
+test('selectForTurn enforces FREE_ONLY (never a paid route) and OFFLINE_ONLY (local only); AUTO returns null', () => {
+  const routes = [
+    { providerId: 'openai', bestModel: 'gpt-5', costTier: 'paid', health: 'AVAILABLE', enabled: true },
+    { providerId: 'pollinations', bestModel: 'openai-fast', costTier: 'free', health: 'AVAILABLE', enabled: true },
+    { providerId: 'ollama', bestModel: 'llama-3.2-3b', costTier: 'local', health: 'AVAILABLE', enabled: true },
+  ];
+  const free = selectForTurn('answer using free only', routes);
+  assert.ok(free); assert.notEqual(free!.costTier, 'paid');
+  const off = selectForTurn('do this offline, no internet', routes);
+  assert.ok(off); assert.equal(off!.source, 'local');
+  assert.equal(selectForTurn('hello there', routes), null); // AUTO -> keep existing behavior
 });
 
 test('no eligible model under policy returns a truthful blocked reason (never a fake pick)', () => {

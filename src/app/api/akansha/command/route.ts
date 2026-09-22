@@ -270,6 +270,37 @@ export async function POST(request: Request) {
           let reply = 'Hello, Boss. Akansha is online and listening.';
           let usedModel = false;
           let sel: { providerId: string; modelId: string } | null = null;
+
+          // Policy-aware selection: honor explicit "free only" / "offline" / "private"
+          // requests via the Model Selection Engine. Guarded — any miss falls through to
+          // the existing (verified) free-first path unchanged.
+          try {
+            const { selectForTurn } = await import('@/core/routing/modelSelection');
+            const { providerBootstrap } = await import('@/core/providers/providerBootstrap');
+            const { providerManager } = await import('@/core/providers/ProviderManager');
+            const decision = selectForTurn(text, providerBootstrap.get()?.routes || []);
+            if (decision) {
+              const prov = providerManager.get(decision.providerId);
+              const resp: any = prov && await prov.generate({
+                model: decision.modelId,
+                messages: [
+                  { role: 'system', content: 'You are Akansha, a warm, concise personal assistant. Reply in one or two friendly sentences. Address the user as "Boss". Never claim to have performed actions.' },
+                  { role: 'user', content: text },
+                ],
+                maxTokens: 120, temperature: 0.6,
+              } as any);
+              if (resp?.content && String(resp.content).trim()) {
+                sel = { providerId: decision.providerId, modelId: decision.modelId };
+                return {
+                  ok: true, requestId, intent: intent.intent, tier, path: 'conversation', usedModel: true, status: 'COMPLETED',
+                  response: String(resp.content).trim(),
+                  trace: { kind: 'conversation', candidates: [sel ? { ...sel, score: 100, reasons: [decision.reason] } : []], selected: sel, reasons: [`Policy-aware selection: ${decision.reason}`] },
+                  latencyMs: Date.now() - started,
+                };
+              }
+            }
+          } catch { /* fall through to default free-first path */ }
+
           try {
             const gen = await modelRouter.generateWithFallback(
               {

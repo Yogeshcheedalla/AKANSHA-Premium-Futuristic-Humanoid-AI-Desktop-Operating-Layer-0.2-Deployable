@@ -53,6 +53,47 @@ export interface ModelCandidate {
 
 export interface SelectionContext { freeRamGB?: number; }
 
+export interface RouteLike {
+  providerId: string; bestModel?: string | null; modelId?: string | null;
+  costTier?: string; health?: string; enabled?: boolean;
+}
+const LOCAL_PROVIDERS = new Set(['ollama', 'local', 'local-server']);
+function mapHealth(h?: string): ModelHealth {
+  switch (h) {
+    case 'AVAILABLE': return 'READY';
+    case 'DEGRADED': return 'DEGRADED';
+    case 'AUTH_REQUIRED': return 'AUTH_REQUIRED';
+    case 'RATE_LIMITED': return 'RATE_LIMITED';
+    case 'UNAVAILABLE': return 'UNAVAILABLE';
+    default: return 'UNKNOWN';
+  }
+}
+
+/** Map providerBootstrap routes into selectable ModelCandidates. */
+export function candidatesFromRoutes(routes: RouteLike[]): ModelCandidate[] {
+  const out: ModelCandidate[] = [];
+  for (const r of routes) {
+    if (r.enabled === false) continue;
+    const modelId = r.bestModel || r.modelId;
+    if (!modelId) continue;
+    const local = LOCAL_PROVIDERS.has(r.providerId);
+    const tier: CostTier = local ? 'local' : (r.costTier === 'paid' ? 'paid' : 'free');
+    out.push({ providerId: r.providerId, modelId, costTier: tier, local, capabilities: { chat: true }, health: mapHealth(r.health) });
+  }
+  return out;
+}
+
+/**
+ * Policy-aware selection for a turn. Returns a decision ONLY for an explicit
+ * restrictive policy (FREE_ONLY / OFFLINE_ONLY / PRIVACY_FIRST); otherwise null
+ * so callers keep their existing verified free-first behavior. Never fabricates.
+ */
+export function selectForTurn(text: string, routes: RouteLike[], ctx: SelectionContext = {}): ModelDecision | null {
+  const policy = derivePolicy(text);
+  if (policy !== 'FREE_ONLY' && policy !== 'OFFLINE_ONLY' && policy !== 'PRIVACY_FIRST') return null;
+  return selectModel({}, policy, candidatesFromRoutes(routes), ctx).decision;
+}
+
 export interface ModelDecision {
   providerId: string;
   modelId: string;
