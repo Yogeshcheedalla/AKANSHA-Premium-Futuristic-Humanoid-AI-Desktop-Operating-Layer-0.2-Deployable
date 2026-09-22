@@ -489,15 +489,30 @@ export class KeylessFreeProvider extends OpenAICompatibleProvider {
   protected authHeaders(): Record<string, string> {
     return { 'Content-Type': 'application/json', ...(this.config.headers || {}) };
   }
-  private chatUrl(): string { return `${this.baseUrl()}/openai`; }
+  private chatUrl(): string {
+    const b = this.baseUrl().replace(/\/+$/, '');
+    // Standard OpenAI-compatible gateways (e.g. OmniRoute .../v1) use /chat/completions;
+    // Pollinations' bare origin uses its /openai alias.
+    return /\/v\d+$/.test(b) ? `${b}/chat/completions` : `${b}/openai`;
+  }
+
+  private fallbackModels(): ModelInfo[] {
+    const dm = this.config.defaultModel;
+    if (!dm) return [];
+    return [{
+      id: dm, provider: this.id, providerType: this.type, displayName: dm,
+      capabilities: inferCapabilitiesFromId(dm, this.capabilities()),
+      contextWindow: 32000, maxOutputTokens: 4096, available: true, healthScore: 1,
+    }];
+  }
 
   async listModels(): Promise<ModelInfo[]> {
     try {
       const res = await fetch(`${this.baseUrl()}/models`, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) return [];
+      if (!res.ok) return this.fallbackModels();
       const raw = await res.json();
       const arr: any[] = Array.isArray(raw) ? raw : (raw?.data || []);
-      return arr
+      const models = arr
         .map((m) => {
           const id: string = m.id || m.name || String(m);
           return {
@@ -509,20 +524,38 @@ export class KeylessFreeProvider extends OpenAICompatibleProvider {
           } satisfies ModelInfo;
         })
         .filter((m) => m.id);
-    } catch { return []; }
+      return models.length ? models : this.fallbackModels();
+    } catch { return this.fallbackModels(); }
   }
 
   async healthCheck(): Promise<HealthStatus> {
     const started = Date.now();
+    // 1) Prefer the keyless model list (Pollinations exposes /models with no auth).
     try {
       const res = await fetch(`${this.baseUrl()}/models`, { signal: AbortSignal.timeout(8000) });
       const latencyMs = Date.now() - started;
-      if (res.status === 401 || res.status === 403) return { state: 'AUTH_REQUIRED', latencyMs, detail: 'Keyless endpoint now requires auth', checkedAt: Date.now() };
-      if (!res.ok) return { state: 'DEGRADED', latencyMs, detail: `HTTP ${res.status}`, checkedAt: Date.now() };
-      const raw = await res.json().catch(() => null);
-      const count = Array.isArray(raw) ? raw.length : (raw?.data?.length || 0);
-      if (count === 0) return { state: 'DEGRADED', latencyMs, detail: 'no models listed', checkedAt: Date.now() };
-      return { state: 'AVAILABLE', latencyMs, detail: `${count} keyless models`, checkedAt: Date.now() };
+      if (res.ok) {
+        const raw = await res.json().catch(() => null);
+        const count = Array.isArray(raw) ? raw.length : (raw?.data?.length || 0);
+        if (count > 0) return { state: 'AVAILABLE', latencyMs, detail: `${count} keyless models`, checkedAt: Date.now() };
+      }
+    } catch { /* fall through to a real chat ping */ }
+    // 2) Fallback: a REAL 1-token chat — proves the gateway can answer even when
+    //    /models is auth-gated (e.g. OmniRoute on loopback). Honest live evidence.
+    try {
+      const res = await fetch(this.chatUrl(), {
+        method: 'POST', headers: this.authHeaders(),
+        body: JSON.stringify({ model: this.config.defaultModel || 'openai', messages: [{ role: 'user', content: 'ping' }], max_tokens: 16 }),
+        signal: AbortSignal.timeout(12000),
+      });
+      const latencyMs = Date.now() - started;
+      if (res.ok) {
+        const j = await res.json().catch(() => null);
+        if (j?.choices?.[0]) return { state: 'AVAILABLE', latencyMs, detail: 'keyless chat ping ok', checkedAt: Date.now() };
+        return { state: 'DEGRADED', latencyMs, detail: 'chat ping returned no choice', checkedAt: Date.now() };
+      }
+      if (res.status === 401 || res.status === 403) return { state: 'AUTH_REQUIRED', latencyMs, detail: 'gateway requires an API key', checkedAt: Date.now() };
+      return { state: 'DEGRADED', latencyMs, detail: `HTTP ${res.status}`, checkedAt: Date.now() };
     } catch (e: any) {
       return { state: 'UNAVAILABLE', latencyMs: Date.now() - started, detail: e?.name === 'TimeoutError' ? 'timeout' : 'unreachable', checkedAt: Date.now() };
     }
