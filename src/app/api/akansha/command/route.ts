@@ -242,6 +242,29 @@ export async function POST(request: Request) {
           };
         }
 
+        // ── TIER 0e: PHASE 1 semantic understanding — honest capability limits.
+        //    If the goal needs an INTERACTIVE organ not wired in this build (page
+        //    control, repository analysis, vision, computer-use), report it truthfully
+        //    instead of pretending or shredding it into a fake multi-step task.
+        {
+          const { analyzeGoal, honestCapabilityNote } = await import('@/core/understanding/semanticUnderstanding');
+          const plan = analyzeGoal(text);
+          const HARD_UNWIRED = ['pageUnderstanding', 'repoInspection', 'vision', 'computerUse'];
+          const blockedOrgans = plan.blocked.filter((b) => HARD_UNWIRED.includes(b));
+          const actionableIntent = intent.intent === 'command' || intent.intent === 'automation' || intent.intent === 'research';
+          if (blockedOrgans.length && actionableIntent) {
+            const canDo = plan.executable.length ? ` What I can do right now: ${plan.executable.join(', ')}.` : '';
+            return {
+              ok: true, requestId, intent: intent.intent, tier: 'tier0', path: 'capability-limited',
+              usedModel: false, status: 'CAPABILITY_UNAVAILABLE',
+              response: `${honestCapabilityNote(plan) || 'This needs capabilities Akansha has not wired yet.'} The parts I can't do yet: ${blockedOrgans.join(', ')} — browser page-control, repository analysis and vision/computer-use are on the roadmap (PHASE 3). I will not pretend I did them.${canDo}`,
+              semantic: plan,
+              trace: { kind: 'deterministic', candidates: [], selected: null, reasons: ['PHASE 1: goal needs unwired interactive organs → honest CAPABILITY_UNAVAILABLE.'] },
+              latencyMs: Date.now() - started,
+            };
+          }
+        }
+
         // ── TIER 0d: durable BACKGROUND TASK (multi-step / timed). The chat
         //    response finishing must NOT end the task — the executor keeps it
         //    alive and it survives restart. Only explicit cancel ends it.
