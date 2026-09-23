@@ -62,3 +62,19 @@ test('maturity ledger is truthful: planned organs are never marked available', (
     }
   }
 });
+
+test('REGRESSION: "generate an image" is imageGeneration, not vision', () => {
+  const caps = detectCapabilities('Can you generate the image for me?');
+  assert.ok(caps.includes('imageGeneration'));
+  assert.ok(!caps.includes('vision'), 'generating an image must not be read as seeing the screen');
+  const p = analyzeGoal('Can you generate the image for me?');
+  const ig = p.requirements.find((r) => r.id === 'imageGeneration');
+  assert.equal(ig!.status, 'NOT_WIRED');
+  const note = honestCapabilityNote(p);
+  assert.match(note, /generating images/i);
+  assert.ok(!note.startsWith('Heads up: but'), 'note must not start with a dangling "but"');
+});
+
+test('"look at the screen" is still vision', () => {
+  assert.ok(detectCapabilities('look at the screen and tell me what you see').includes('vision'));
+});

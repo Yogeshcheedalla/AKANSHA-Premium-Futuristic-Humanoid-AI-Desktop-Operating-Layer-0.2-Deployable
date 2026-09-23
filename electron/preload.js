@@ -43,6 +43,12 @@ contextBridge.exposeInMainWorld('akanshaDesktop', {
     return ipcRenderer.invoke('akansha:bootstrap-passphrase');
   },
 
+  // Durable onboarding state (authoritative in userData; survives port/origin change).
+  onboarding: {
+    getStatus() { return ipcRenderer.invoke('akansha:onboarding-status'); },
+    complete() { return ipcRenderer.invoke('akansha:complete-onboarding'); },
+  },
+
   // ── Desktop shell: startup + window + voice sync (narrow, no Node/FS) ──
   getStartup() { return ipcRenderer.invoke('akansha:get-startup'); },
   setStartup(enabled) { return ipcRenderer.invoke('akansha:set-startup', !!enabled); },

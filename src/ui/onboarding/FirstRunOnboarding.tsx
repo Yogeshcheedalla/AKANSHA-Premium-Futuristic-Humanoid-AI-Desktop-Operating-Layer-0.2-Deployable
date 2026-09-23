@@ -29,7 +29,17 @@ export function FirstRunOnboarding({ onDone }: { onDone: () => void }) {
   const [setup, setSetup] = useState<SetupViewModel | null>(null);
   const [persistence, setPersistence] = useState(false);
   const [mic, setMic] = useState(false);
-  const finish = () => { try { localStorage.setItem(ONBOARD_FLAG, '1'); } catch { /* ignore */ } onDone(); };
+  const finish = async () => {
+    const desk = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+    if (desk?.onboarding?.complete) {
+      try {
+        const r = await desk.onboarding.complete();
+        if (!r?.ok) return; // do not mark complete unless it persisted
+      } catch { return; }
+    }
+    try { localStorage.setItem(ONBOARD_FLAG, '1'); } catch { /* harmless cache for web only */ }
+    onDone();
+  };
 
   useEffect(() => {
     // setState happens in .then (not synchronously in the effect body).
@@ -88,7 +98,7 @@ export function FirstRunOnboarding({ onDone }: { onDone: () => void }) {
           </GlassSurface>
 
           <div className="flex justify-end mt-4 mb-8">
-            <button onClick={finish} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-400/30 text-cyan-100 text-sm hover:scale-[1.03] transition-transform">
+            <button onClick={() => { void finish(); }} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-400/30 text-cyan-100 text-sm hover:scale-[1.03] transition-transform">
               Enter Akansha <ArrowRight size={16} />
             </button>
           </div>

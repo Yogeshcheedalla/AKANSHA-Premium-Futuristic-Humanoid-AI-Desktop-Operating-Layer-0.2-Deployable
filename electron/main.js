@@ -21,6 +21,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const logic = require('./desktop-logic');
 const { createBackendLogger } = require('./backendLogger');
+const { readOnboarding, completeOnboarding } = require('./onboardingState');
 
 const isDev = !app.isPackaged;
 const APP_PATH = isDev ? app.getAppPath() : path.join(process.resourcesPath, 'app');
@@ -455,6 +456,15 @@ if (!gotLock) {
     // Local desktop auto-unlock: the renderer exchanges this for the httpOnly
     // session cookie. Only available inside the packaged/desktop app.
     ipcMain.handle('akansha:bootstrap-passphrase', () => getLocalAccessSecret());
+
+    // Durable onboarding state — authoritative in userData, independent of the
+    // random backend port / renderer origin (localStorage is per-origin and would
+    // reset each launch). Never stores secrets.
+    ipcMain.handle('akansha:onboarding-status', () => readOnboarding(app.getPath('userData')));
+    ipcMain.handle('akansha:complete-onboarding', () => {
+      try { return { ok: true, state: completeOnboarding(app.getPath('userData'), app.getVersion()) }; }
+      catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+    });
 
     // Narrow desktop IPC (no Node/FS exposure): startup + window + voice state.
     ipcMain.handle('akansha:get-startup', () => getStartupStatus());

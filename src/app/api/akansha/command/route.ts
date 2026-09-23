@@ -249,7 +249,7 @@ export async function POST(request: Request) {
         {
           const { analyzeGoal, honestCapabilityNote } = await import('@/core/understanding/semanticUnderstanding');
           const plan = analyzeGoal(text);
-          const HARD_UNWIRED = ['pageUnderstanding', 'repoInspection', 'vision', 'computerUse'];
+          const HARD_UNWIRED = ['pageUnderstanding', 'repoInspection', 'vision', 'computerUse', 'imageGeneration'];
           const blockedOrgans = plan.blocked.filter((b) => HARD_UNWIRED.includes(b));
           const actionableIntent = intent.intent === 'command' || intent.intent === 'automation' || intent.intent === 'research';
           if (blockedOrgans.length && actionableIntent) {

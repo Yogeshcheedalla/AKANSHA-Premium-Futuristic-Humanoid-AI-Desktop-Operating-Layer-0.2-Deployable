@@ -40,9 +40,21 @@ export default function AppClient() {
   const [runtime, setRuntime] = useState<{ status: string; activeRoute: { providerId: string; modelId: string; costTier: string } | null } | null>(null);
 
   useEffect(() => {
-    void Promise.resolve().then(() => {
+    void (async () => {
+      const desk = typeof window !== 'undefined' ? (window as any).akanshaDesktop : undefined;
+      if (desk?.onboarding?.getStatus) {
+        // Desktop: the durable userData flag is authoritative (survives random port/origin).
+        try {
+          const st = await desk.onboarding.getStatus();
+          if (!st?.onboarded) setOnboard(true);
+        } catch {
+          setOnboard(true); // recoverable: cannot read state -> show onboarding, never fake complete
+        }
+        return;
+      }
+      // Web (no desktop bridge): localStorage is stable per origin.
       try { if (!localStorage.getItem(ONBOARD_FLAG)) setOnboard(true); } catch { /* SSR/no-storage: skip */ }
-    });
+    })();
   }, []);
 
   useEffect(() => {

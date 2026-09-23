@@ -37,6 +37,7 @@ export const CAPABILITY_MATURITY: Record<string, Maturity> = {
   pageUnderstanding: 'planned', // no DOM/read-page extraction (PHASE 3)
   repoInspection: 'planned', // no code-repo analyzer
   vision: 'planned',         // no screenshot/vision loop
+  imageGeneration: 'planned', // no image/artifact generation
   computerUse: 'planned',    // no GUI act/observe/verify (PHASE 3)
 };
 
@@ -46,7 +47,8 @@ const NETWORK_CAPS = new Set(['browser', 'webSearch', 'pageUnderstanding', 'repo
 const EXTRA: Array<{ id: string; re: RegExp }> = [
   { id: 'pageUnderstanding', re: /\b(summariz\w*|read (the|this|that) (page|site|article|video|post)|extract\w* (from|the)|transcrib\w*|what does (the|this|that) (page|site|video|article)|differences|compare it)\b/i },
   { id: 'repoInspection', re: /\b(repositor(?:y|ies)|repo|github repo|this repo|codebase|source code|commit|branch|pull request|pr)\b/i },
-  { id: 'vision', re: /\b(screen|screenshot|see (what|this|the)|image|picture|camera|photo)\b/i },
+  { id: 'vision', re: /\b(screen|screenshot|camera|what'?s on (the|my|this) screen|look at (the|this|my) (screen|image|picture|photo)|see (the|this|my|what) (screen|image|picture|photo)|view (the|this) (image|picture|photo))\b/i },
+  { id: 'imageGeneration', re: /\b(?:generate|create|make|draw|design)\b[\s\S]{0,24}\b(image|picture|photo|logo|art(?:work)?|illustration|banner|thumbnail)\b/i },
   { id: 'computerUse', re: /\b(click|tap|type into|fill (in|out|the)|press the button|scroll (down|up)|select the)\b/i },
 ];
 
@@ -125,12 +127,13 @@ export function honestCapabilityNote(plan: SemanticPlan): string {
   const blockedLabel: Record<string, string> = {
     webSearch: 'live web research', pageUnderstanding: 'reading/understanding a web page',
     repoInspection: 'inspecting a code repository', vision: 'looking at the screen/images',
+    imageGeneration: 'generating images/artwork',
     computerUse: 'controlling the screen (clicking/typing in apps)', compiler: 'compiling/running code',
   };
   const blockedNames = plan.blocked.map((b) => blockedLabel[b] || b);
   const parts: string[] = [];
   if (plan.executable.length) parts.push(`I can ${plan.executable.map((e) => e.replace('desktop', 'control apps')).join(', ')}`);
-  if (blockedNames.length) parts.push(`but ${blockedNames.join(', ')} ${blockedNames.length > 1 ? 'aren\u2019t' : 'isn\u2019t'} wired yet`);
-  if (plan.needsUser.length) parts.push('and I need one decision from you');
+  if (blockedNames.length) parts.push(`${plan.executable.length ? 'but ' : ''}${blockedNames.join(', ')} ${blockedNames.length > 1 ? 'aren\u2019t' : 'isn\u2019t'} wired yet`);
+  if (plan.needsUser.length) parts.push(`${parts.length ? 'and ' : ''}I need one decision from you`);
   return parts.length ? `Heads up: ${parts.join(', ')}. I'll do what's available and tell you exactly what I can't — I won't pretend otherwise.` : '';
 }
