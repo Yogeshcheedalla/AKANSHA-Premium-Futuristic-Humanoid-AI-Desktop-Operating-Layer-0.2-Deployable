@@ -59,34 +59,38 @@ export class ExecutionEngine {
       let verified = { passed: false, method: 'none', detail: 'not attempted' };
       let attempts = 0;
       let lastErr: string | undefined;
+      const startedAt = Date.now();
+
+      // Apply the effectful action EXACTLY ONCE. Re-applying on a later attempt would
+      // duplicate the effect (re-typing appends text; re-clicking double-fires), so the
+      // retry loop below only re-OBSERVES and re-VERIFIES.
+      try {
+        obs = await this.applyAction(provider, step.action);
+      } catch (e: any) {
+        lastErr = e?.message;
+        obs = { found: false };
+      }
+
+      const observeTarget = (step.action as any).target || (step.action as any).app;
+      const canReobserve =
+        !!step.expect &&
+        ['type', 'key', 'click', 'scroll'].includes(step.action.kind) &&
+        !!observeTarget;
 
       while (attempts < maxAttempts) {
         attempts++;
         step.attemptCount = attempts;
-        const startedAt = Date.now();
-        try {
-          obs = await this.applyAction(provider, step.action);
-        } catch (e: any) {
-          lastErr = e?.message;
-          obs = { found: false };
-        }
-
         step.status = 'OBSERVING';
-        // For state-changing window actions, re-observe to read back real state,
-        // but never clobber a good observation the action already returned.
-        const observeTarget = (step.action as any).target || (step.action as any).app;
-        const shouldReobserve =
-          !!step.expect &&
-          obs.found &&
-          ['type', 'key', 'click', 'scroll'].includes(step.action.kind) &&
-          !!observeTarget;
-        if (shouldReobserve) {
+
+        // On a later attempt, re-read the real state (the effect may have landed after a
+        // focus/timing delay) — but NEVER re-apply the action.
+        if (attempts > 1 && canReobserve) {
           try {
             const fresh = await provider.observe(observeTarget);
             if (fresh.found) obs = { ...obs, found: true, title: fresh.title ?? obs.title, text: fresh.text ?? obs.text };
             else if (fresh.text) obs = { ...obs, text: fresh.text };
           } catch {
-            /* keep the action's own observation */
+            /* keep the last observation */
           }
         }
 
@@ -117,27 +121,19 @@ export class ExecutionEngine {
           break;
         }
 
-        const failureClass = executionRecovery.classify(lastErr, obs.found);
-        const recovery = executionRecovery.decide(failureClass, attempts, maxAttempts);
-        if (recovery.action === 'fail') {
-          step.status = 'FAILED';
-          ev.failureClass = failureClass;
-          return {
-            status: 'FAILED',
-            summary: `Step "${step.description}" failed (${failureClass}): ${verified.detail || lastErr || 'no evidence of effect'}`,
-            evidence,
-            failureClass,
-          };
-        }
-        await sleep(recovery.delayMs);
+        // Not verified. If there is nothing to wait on (no re-observable target and the
+        // action itself did not take effect), stop early and fail honestly.
+        if (!canReobserve && !obs.found) break;
+        await sleep(350);
       }
 
       if (step.status !== 'DONE') {
+        const failureClass = executionRecovery.classify(lastErr, obs.found);
         return {
           status: 'FAILED',
-          summary: `Step "${step.description}" could not be verified after ${attempts} attempts.`,
+          summary: `Step "${step.description}" could not be verified after ${attempts} attempt(s): ${verified.detail || lastErr || 'no observed evidence'}.`,
           evidence,
-          failureClass: 'VERIFICATION_FAILED',
+          failureClass,
         };
       }
     }

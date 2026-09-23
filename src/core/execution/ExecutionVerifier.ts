@@ -12,6 +12,10 @@ export interface VerificationOutcome {
  * only counts as done when its expected state is actually observed.
  */
 export class ExecutionVerifier {
+  private normalize(s: string): string {
+    return (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
   verify(step: ExecutionStep, obs: WindowObservation): VerificationOutcome {
     const expect = step.expect;
     if (!expect) {
@@ -29,6 +33,12 @@ export class ExecutionVerifier {
       const needle = expect.appRunning.toLowerCase();
       const passed = !!obs.title && obs.title.toLowerCase().includes(needle);
       return { passed, method: 'app-running', detail: `expected "${expect.appRunning}" window present, observed "${obs.title ?? 'none'}"` };
+    }
+
+    if (expect.textEquals != null) {
+      // Normalized EXACT content match — a substring of garbled/duplicated text must NOT pass.
+      const passed = this.normalize(obs.text || '') === this.normalize(expect.textEquals);
+      return { passed, method: 'visible-text-exact', detail: `expected content to equal "${expect.textEquals}", observed "${obs.text ?? ''}"` };
     }
 
     if (expect.textContains) {

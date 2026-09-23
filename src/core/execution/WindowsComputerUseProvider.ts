@@ -187,8 +187,17 @@ try {
     if ($w) {
       [void][AkanshaWin32]::SetForegroundWindow($w.Current.NativeWindowHandle)
       Start-Sleep -Milliseconds 350
-      [System.Windows.Forms.SendKeys]::SendWait($req.text)
-      Start-Sleep -Milliseconds 500
+      # Clipboard paste is reliable for real text; SendKeys drops/interleaves characters.
+      $pasted = $false
+      try {
+        $prev = $null; try { $prev = Get-Clipboard -ErrorAction SilentlyContinue } catch {}
+        Set-Clipboard -Value $req.text
+        [System.Windows.Forms.SendKeys]::SendWait('^v')
+        Start-Sleep -Milliseconds 400
+        $pasted = $true
+        try { if ($null -ne $prev) { Set-Clipboard -Value $prev } } catch {}
+      } catch { $pasted = $false }
+      if (-not $pasted) { [System.Windows.Forms.SendKeys]::SendWait($req.text); Start-Sleep -Milliseconds 400 }
       $t = $w.Current.Name
     }
     $text = Read-EditText $w

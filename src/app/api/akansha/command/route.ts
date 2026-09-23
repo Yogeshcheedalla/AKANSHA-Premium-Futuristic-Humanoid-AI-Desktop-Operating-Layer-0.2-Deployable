@@ -401,7 +401,7 @@ export async function POST(request: Request) {
 
         // ── CAPABILITY ROUTING ────────────────────────────────────────
         const skillCandidates = skillRegistry.rankForGoal(text);
-        const topSkill = skillCandidates[0] || null;
+        const topSkill = skillCandidates.find((c) => c.score >= 15) || null;
 
         // ── EXECUTION (orchestrator does real generation/risk/verify) ─
         const mission = await masterOrchestrator.createMission(text, {

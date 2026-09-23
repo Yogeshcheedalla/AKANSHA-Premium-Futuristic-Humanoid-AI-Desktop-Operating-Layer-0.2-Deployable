@@ -27,7 +27,9 @@ export class ExecutionPlanner {
     // "open <app> and (write|type) <text>"
     const openAndType = g.match(/open\s+(.+?)\s+(?:and\s+)?(?:write|type|enter)\s+(?:"([^"]+)"|(.+))$/i);
     if (openAndType && app) {
+      const quoted = !!openAndType[2];
       const text = (openAndType[2] || openAndType[3] || '').trim();
+      const authoring = !quoted && this.looksLikeAuthoring(text);
       return {
         goal,
         riskTier,
@@ -35,7 +37,14 @@ export class ExecutionPlanner {
         requiresConfirmation,
         steps: [
           newStep({ action: { kind: 'launch', app: app.name }, description: `Launch ${app.name}`, expect: { windowTitleContains: app.titleHint } }),
-          text ? newStep({ action: { kind: 'type', text, target: app.name }, description: `Type "${text}" into ${app.name}`, expect: { textContains: text } }) : null,
+          text
+            ? newStep({
+                action: { kind: 'type', text, target: app.name },
+                description: authoring ? `Write ${text} into ${app.name}` : `Type "${text}" into ${app.name}`,
+                generate: authoring || undefined,
+                expect: authoring ? undefined : { textEquals: text },
+              })
+            : null,
         ].filter(Boolean) as ExecutionStep[],
       };
     }
@@ -75,19 +84,29 @@ export class ExecutionPlanner {
     // "type/write <text>" into the current window
     const type = g.match(/^(?:type|write|enter)\s+(?:"([^"]+)"|(.+))$/i);
     if (type) {
+      const quoted = !!type[1];
       const text = (type[1] || type[2] || '').trim();
       if (text) {
+        const authoring = !quoted && this.looksLikeAuthoring(text);
         return {
           goal,
           riskTier,
           permissions,
           requiresConfirmation,
-          steps: [newStep({ action: { kind: 'type', text }, description: `Type "${text}"`, expect: { textContains: text } })],
+          steps: [newStep({ action: { kind: 'type', text }, description: authoring ? `Write ${text}` : `Type "${text}"`, generate: authoring || undefined, expect: authoring ? undefined : { textEquals: text } })],
         };
       }
     }
 
     return null;
+  }
+
+  /** An unquoted type text that asks to author real content (a program/doc), not type a literal. */
+  private looksLikeAuthoring(text: string): boolean {
+    const t = (text || '').toLowerCase();
+    if (/\b(program|source code|code|function|method|class|script|report|essay|article|poem|letter|documentation|docs|snippet)\b/.test(t)) return true;
+    if (/\bin (c|c\+\+|cpp|python|java|javascript|typescript|go|golang|rust|ruby|php|sql|html|css|kotlin|swift)\b/.test(t)) return true;
+    return false;
   }
 
   private findApp(goal: string): { name: string; titleHint: string } | null {

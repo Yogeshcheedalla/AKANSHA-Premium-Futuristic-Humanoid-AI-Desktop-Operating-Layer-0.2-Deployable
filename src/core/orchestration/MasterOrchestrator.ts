@@ -327,6 +327,45 @@ export class MasterOrchestrator {
         return mission;
       }
 
+      // PHASE 8: for authoring steps, generate the REAL content via a model before
+      // typing — never type the request words and call it the artifact.
+      for (const s of plan.steps) {
+        if (s.generate && s.action.kind === 'type') {
+          const spec = s.action.text;
+          let content = '';
+          try {
+            const gen = await modelRouter.generateWithFallback(
+              {
+                messages: [
+                  { role: 'system', content: 'Output ONLY the raw file content requested — no commentary, no explanation, no markdown code fences.' },
+                  { role: 'user', content: `Produce the full content of this file: ${spec}` },
+                ],
+                maxTokens: 800,
+                temperature: 0.2,
+              },
+              'coding'
+            );
+            content = String(gen?.response?.content || '').replace(/^\s*```[a-z]*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+          } catch { content = ''; }
+
+          if (!content) {
+            mission.status = 'FAILED';
+            mission.context.failureClass = 'CAPABILITY_NOT_CONNECTED';
+            mission.context.reply =
+              `I understood you want me to author "${spec}", but no working model is available to generate the content, ` +
+              `so I won't type the request and pretend it is the program. Enable a free route (AI Center) or install a ` +
+              `local model, then ask again.`;
+            this.emit({ type: 'MISSION_FAILED', missionId, payload: { error: 'no_model_for_authoring' } });
+            mission.updatedAt = Date.now();
+            return mission;
+          }
+          s.action = { ...s.action, text: content };
+          s.expect = { textEquals: content };
+          s.generate = false;
+          s.description = `Write ${spec} into ${s.action.target || 'the window'}`;
+        }
+      }
+
       const perm = permissionEngine.evaluate(plan.steps.map((s) => s.action), risk.tier);
       mission.context.permissions = perm.permissions;
       plan.requiresConfirmation = perm.requiresConfirmation;
