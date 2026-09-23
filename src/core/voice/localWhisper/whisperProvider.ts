@@ -78,6 +78,10 @@ function resolveBundledRoot(): string | null {
   const rp = (process as any).resourcesPath;
   if (typeof rp === 'string' && rp) roots.push(join(rp, 'voice', 'models'));
   roots.push(join(process.cwd(), 'voice', 'models'));
+  // The packaged backend child runs with cwd = <resources>/app; the model ships at
+  // <resources>/voice/models, i.e. '../voice/models' from that cwd. Covers the case
+  // where the AKANSHA_WHISPER_BUNDLE env does not reach the child.
+  roots.push(join(process.cwd(), '..', 'voice', 'models'));
   for (const root of roots) {
     // A root counts as bundled ONLY if <root>/<modelId>/config.json exists — we
     // never trust a bare directory name. Priority: Electron-forwarded env →
