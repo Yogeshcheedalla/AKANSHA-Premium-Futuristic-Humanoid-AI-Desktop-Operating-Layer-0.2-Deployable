@@ -44,6 +44,11 @@ test('guided offline flow: show-recommendations phrasings', () => {
   assert.equal(parseModelFlowCommand('show recommended models'), 'show-recommendations');
   assert.equal(parseModelFlowCommand('what models can I install'), 'show-recommendations');
   assert.equal(parseModelFlowCommand('show me the best models for this device'), 'show-recommendations');
+  // REGRESSION: these previously fell through to the desktop planner and failed.
+  assert.equal(parseModelFlowCommand('what are the best model u recommend to install'), 'show-recommendations');
+  assert.equal(parseModelFlowCommand('which model should I install'), 'show-recommendations');
+  assert.equal(parseModelFlowCommand('recommend a model'), 'show-recommendations');
+  assert.equal(parseModelFlowCommand('best model to install'), 'show-recommendations');
 });
 
 test('guided offline flow: install phrasings', () => {
@@ -55,4 +60,6 @@ test('guided offline flow: install phrasings', () => {
 test('guided offline flow: unrelated text is neither', () => {
   assert.equal(parseModelFlowCommand('open notepad'), null);
   assert.equal(parseModelFlowCommand('what is a model'), null);
+  // A definitional question with no install/recommend intent must reach the model, not the recommender.
+  assert.equal(parseModelFlowCommand('what is a good model for coding'), null);
 });

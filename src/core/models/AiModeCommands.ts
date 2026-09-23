@@ -33,7 +33,7 @@ export function mapToAiModePhrase(text: string): ModePhrase | null {
 // "install recommended model" / "install this" / "yes install it" → start the
 // real install job for the top fit. Questions ("what is a recommended model?")
 // are excluded so they still reach the model.
-const SHOW_RECO = /^\s*(?:please\s+)?(?:show|list|display|see|open)(?: me)?(?: the| your| some)?(?: recommended| best| suggested| available)?\s*(?:local\s*)?(?:ai\s*)?models?(?:\s+for\s+(?:this|my)\s+(?:device|pc|machine|computer))?\s*[.!?,]*$|^\s*(?:what|which)\s+(?:models?|ai\s+models?)\s+(?:can\s+i|should\s+i|are\s+(?:available|recommended))\b/i;
+const SHOW_RECO = /^\s*(?:please\s+)?(?:show|list|display|see|open)(?: me)?(?: the| your| some)?(?: recommended| best| suggested| available)?\s*(?:local\s*)?(?:ai\s*)?models?(?:\s+for\s+(?:this|my)\s+(?:device|pc|machine|computer))?\s*[.!?,]*$|^\s*(?:what|which)\s+(?:models?|ai\s+models?)\s+(?:can\s+i|should\s+i|are\s+(?:available|recommended))\b|^\s*(?:what|which)\b[\s\S]*\bmodels?\b[\s\S]*\b(?:install|recommend|should|can|suitable|run|best|top|available|free)\b|\b(?:recommend|suggest)\b[\s\S]*\bmodels?\b|^\s*(?:the\s+)?(?:best|recommended|top)\b[\s\S]*\bmodels?\b/i;
 const INSTALL_RECO = /^\s*(?:please\s+)?(?:install|download|set\s?up|add|get)(?: the| this| a)?\s*(?:recommended| best| suggested| that| it)?\s*(?:model|ai\s*model|one|this one)?\s*[.!?,]*$|^\s*(?:yes[,]?\s+)?(?:install|do it|go ahead|install it|install this)\b/i;
 
 export type ModelFlowCommand = 'show-recommendations' | 'install-recommended';
