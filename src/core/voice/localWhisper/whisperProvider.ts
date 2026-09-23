@@ -107,7 +107,14 @@ async function getTranscriber(): Promise<any> {
   if (transcriber) return transcriber;
   if (loading) return loading;
   loading = (async () => {
-    const { pipeline, env } = await import('@huggingface/transformers');
+    // Load via require() first: serverExternalPackages resolves require at runtime
+    // from node_modules reliably inside the Next server bundle, whereas a dynamic
+    // import() of the external can fail to resolve there (the same class of issue
+    // as pg). Fall back to dynamic import only for dev/ESM contexts.
+    let tf: any;
+    try { tf = require('@huggingface/transformers'); }
+    catch { tf = await import('@huggingface/transformers'); }
+    const { pipeline, env } = tf;
     const bundledRoot = resolveBundledRoot();
     if (bundledRoot) {
       // BUNDLED → hard-disable the hub, so a fresh/offline install can NEVER
