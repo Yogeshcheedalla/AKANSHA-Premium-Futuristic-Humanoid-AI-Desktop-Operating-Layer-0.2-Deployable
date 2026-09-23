@@ -38,6 +38,8 @@ export const CommandWorkspace = ({ onNavigate }: { onNavigate?: (ws: string) => 
   const [loginToken, setLoginToken] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('STANDBY');
   const [partial, setPartial] = useState('');
+  const [showDiag, setShowDiag] = useState(false);
+  const [diag, setDiag] = useState<any | null>(null);
   const sendRef = useRef<(text: string, requestId?: string) => void>(() => {});
 
   const login = async (passphrase: string): Promise<boolean> => {
@@ -141,6 +143,15 @@ export const CommandWorkspace = ({ onNavigate }: { onNavigate?: (ws: string) => 
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Poll live voice diagnostics only while the panel is open.
+  useEffect(() => {
+    if (!showDiag || !audioEngine) return;
+    const tick = () => { try { setDiag(audioEngine.getDiagnostics()); } catch { /* ignore */ } };
+    tick();
+    const id = setInterval(tick, 400);
+    return () => clearInterval(id);
+  }, [showDiag]);
 
   const send = async (text: string, requestId?: string) => {
     const trimmed = text.trim();
@@ -354,12 +365,42 @@ export const CommandWorkspace = ({ onNavigate }: { onNavigate?: (ws: string) => 
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
           </button>
         </GlassSurface>
-        <div className="flex items-center gap-2 mt-2 px-1">
+        <div className="flex items-center gap-3 mt-2 px-1">
           <span className={`w-1.5 h-1.5 rounded-full ${isListening ? 'bg-cyan-400' : 'bg-white/20'}`} />
           <span className="text-[10px] uppercase tracking-[0.15em] text-white/30">
-            voice: {voiceState}{audioEngine && !audioEngine.capabilities().asr ? ' · ASR unavailable' : ''}
+            voice: {voiceState}
           </span>
+          <button onClick={() => setShowDiag((v) => !v)} className="text-[10px] uppercase tracking-wider text-white/30 hover:text-cyan-300 transition-colors">
+            {showDiag ? 'hide diagnostics' : 'voice diagnostics'}
+          </button>
+          {audioEngine && (
+            <button onClick={() => { try { audioEngine.testVoice(); } catch { /* ignore */ } }}
+              className="text-[10px] uppercase tracking-wider text-white/30 hover:text-cyan-300 transition-colors">
+              test voice
+            </button>
+          )}
         </div>
+        {showDiag && (
+          <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-[10px] text-white/50 space-y-1">
+            {!diag ? (
+              <p>Toggle the mic and speak — the live values appear here.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/35 w-24">mic level</span>
+                  <span className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <span className="block h-full bg-cyan-400 transition-all" style={{ width: `${Math.min(100, Math.round((diag.lastRms || 0) * 500))}%` }} />
+                  </span>
+                </div>
+                <p>state: <span className="text-white/70">{diag.state}</span> · asrMode: <span className="text-white/70">{diag.asrMode}</span> · serverAsr: <span className="text-white/70">{diag.serverAsrActive ? 'on' : 'off'}</span></p>
+                <p>mic active: <span className="text-white/70">{diag.micActive ? 'yes' : 'no'}</span> · tracks: <span className="text-white/70">{diag.micTrackCount}</span> · last transcript: <span className="text-white/70">{diag.lastTranscribeCode || '—'}</span></p>
+                <p>ASR local: <span className="text-white/70">{diag.local ? 'yes' : 'no'}</span> · bundled: <span className="text-white/70">{diag.bundled ? 'yes' : 'no'}</span> · tts: <span className="text-white/70">{diag.tts ? 'yes' : 'no'}</span> · voices: <span className="text-white/70">{diag.voices}</span></p>
+                {diag.error && <p className="text-rose-300">error: {diag.error}{diag.detail ? ` — ${diag.detail}` : ''}</p>}
+                <p className="text-white/25 pt-1">Speak and watch the mic level bar. If it stays flat, the mic is not delivering audio (device or permission). If it moves but last transcript is not OK, the ASR stage is failing. Use test voice to confirm audio output.</p>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

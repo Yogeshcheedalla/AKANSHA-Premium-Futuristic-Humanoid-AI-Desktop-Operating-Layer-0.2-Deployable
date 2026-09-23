@@ -160,6 +160,9 @@ export class AudioEngine {
   // Offline ASR provenance from the LAST real transcription (drives the LOCAL badge).
   private lastAsrLocal = false;
   private lastAsrBundled = false;
+  // Live diagnostics (surfaced in the UI so the failing stage is visible, not guessed).
+  private lastRms = 0;
+  private lastTranscribeCode = '';
 
   /** The ACTUAL applied audio processing (AEC/NS/AGC), verified from the live track. */
   getAudioHealth(): AudioHealth | null { return this.audioHealth; }
@@ -209,6 +212,30 @@ export class AudioEngine {
   /** Which ASR path the live session is using ('' = no session). */
   getAsrMode(): AsrMode {
     return this.asrMode;
+  }
+
+  /** Live pipeline snapshot so the failing stage is visible, not guessed. */
+  getDiagnostics(): {
+    state: VoiceState; asrMode: AsrMode; serverAsrActive: boolean; micActive: boolean;
+    micTrackCount: number; lastRms: number; lastTranscribeCode: string; error?: VoiceError;
+    detail?: string; local: boolean; bundled: boolean; voices: number; tts: boolean;
+  } {
+    let micTrackCount = 0;
+    try { micTrackCount = this.mediaStream ? this.mediaStream.getAudioTracks().length : 0; } catch { /* ignore */ }
+    let voices = 0;
+    try { voices = (typeof window !== 'undefined' && window.speechSynthesis) ? (window.speechSynthesis.getVoices()?.length ?? 0) : 0; } catch { /* ignore */ }
+    return {
+      state: this.state, asrMode: this.asrMode, serverAsrActive: this.serverAsrActive,
+      micActive: !!(this.mediaStream && this.mediaStream.active), micTrackCount,
+      lastRms: this.lastRms, lastTranscribeCode: this.lastTranscribeCode,
+      error: this.error, detail: this.detail, local: this.lastAsrLocal, bundled: this.lastAsrBundled,
+      voices, tts: this.capabilities().tts,
+    };
+  }
+
+  /** Speak a known phrase so the user can confirm audio output works. */
+  testVoice(text = 'This is how I sound, Boss.'): { accepted: boolean; reason: string } {
+    return this.speak(`test-${Date.now()}`, text, { rate: 1.0, pitch: 1.05 });
   }
 
   capabilities(): VoiceCapabilities {
@@ -274,6 +301,7 @@ export class AudioEngine {
         let sum = 0;
         for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
         const rms = Math.sqrt(sum / data.length);
+        this.lastRms = rms;
         const speaking = rms > 0.02;
         const now = Date.now();
         if (speaking) { if (!this.lastVoiceAt || now - this.lastVoiceAt > this.SILENCE_STOP_MS) this.speechStartAt = now; this.lastVoiceAt = now; }
@@ -421,6 +449,7 @@ export class AudioEngine {
         this.lastAsrLocal = json?.local === true;
         this.lastAsrBundled = json?.asrMode === 'bundled';
         const text = String(json?.text ?? '').trim();
+        this.lastTranscribeCode = text ? 'OK' : 'EMPTY';
         if (text) {
           // FINAL transcript → the SAME executable pipeline as native SR.
           const utteranceId = `utt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -431,6 +460,7 @@ export class AudioEngine {
         return;
       }
       const code = String(json?.code || (res.status === 503 ? 'NO_TRANSCRIPTION_PROVIDER' : 'UPSTREAM_ERROR'));
+      this.lastTranscribeCode = code;
       this.asrFailures += 1;
       if (serverAsrFailure(code, this.asrFailures) === 'fatal') {
         this.serverAsrActive = false;
@@ -445,6 +475,7 @@ export class AudioEngine {
         this.emitState();
       }
     } catch {
+      this.lastTranscribeCode = 'UNREACHABLE';
       this.asrFailures += 1;
       if (serverAsrFailure('UNAVAILABLE', this.asrFailures) === 'fatal') {
         this.serverAsrActive = false; this.asrMode = 'none';
