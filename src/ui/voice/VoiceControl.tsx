@@ -10,8 +10,9 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Mic, MicOff, Loader2, Volume2, AlertTriangle } from 'lucide-react';
-import { audioEngine, type VoiceState } from './AudioEngine';
+import { audioEngine, parseVoiceSessionCommand, type VoiceState } from './AudioEngine';
 import { handleVoiceKeydown, handleVoiceKeyup } from '@/core/voice/voiceShortcuts';
+import { styleFromTurn } from '@/core/voice/emotion/emotionStyle';
 
 const LABEL: Record<VoiceState, string> = {
   MUTED: 'Muted',
@@ -48,6 +49,50 @@ export function VoiceControl() {
     // Subscribe only — no synchronous setState in the effect body.
     const off = audioEngine.onState((s) => { setState(s.state); setActive(isSessionActive(s.state)); setAsrMode(s.asrMode || 'none'); setErrDetail(s.detail || ''); setAsrLocal(!!s.local); setAsrBundled(!!s.bundled); });
     return () => { off(); };
+  }, []);
+
+  // Global voice command execution (fixes workspace isolation)
+  useEffect(() => {
+    if (!audioEngine) return;
+    const offFinal = audioEngine.onFinalUtterance(async (u) => {
+      const cmd = parseVoiceSessionCommand(u.transcript);
+      if (cmd === 'stop') { audioEngine.stop(); return; }
+      if (cmd === 'start') { void (async () => { await audioEngine.start(); audioEngine.startListening(); })(); return; }
+      
+      const trimmed = u.transcript.trim();
+      if (!trimmed) return;
+
+      // Broadcast that a voice command was sent so UI can show it if visible
+      window.dispatchEvent(new CustomEvent('akansha-voice-sent', { detail: { text: trimmed } }));
+
+      try {
+        const res = await fetch('/api/akansha/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ text: trimmed, requestId: u.utteranceId }),
+        });
+        if (res.status === 401) {
+          // If unauthenticated, notify via event or voice
+          window.dispatchEvent(new CustomEvent('akansha-voice-error', { detail: { error: 'Authentication required.' } }));
+          audioEngine.speak(`err-${Date.now()}`, 'I need an access token to do that. Please log in.');
+          return;
+        }
+        const data = await res.json();
+        
+        // Broadcast the result back to UI
+        window.dispatchEvent(new CustomEvent('akansha-voice-result', { detail: data }));
+        
+        // Speak the result globally
+        const reply = data.response || data.error || 'No response.';
+        setTimeout(() => {
+          audioEngine.speak(`resp-${Date.now()}`, reply, styleFromTurn(data.response || '', { status: data.status, failureClass: (data as any).failureClass, intent: data.intent }));
+        }, 400);
+      } catch (e: any) {
+        window.dispatchEvent(new CustomEvent('akansha-voice-error', { detail: { error: `Request failed: ${e.message}` } }));
+      }
+    });
+    return () => { offFinal(); };
   }, []);
 
   const startSession = async () => {

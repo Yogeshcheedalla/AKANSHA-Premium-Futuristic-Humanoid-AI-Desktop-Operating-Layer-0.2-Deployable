@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   // require() from node_modules — same reason as pg. Without these listed, the
   // /api/voice/transcribe route fails to load the local ASR module and voice
   // silently degrades to cloud-only (which needs an API key = NOT free).
-  serverExternalPackages: ["pg", "pg-cloudflare", "@modelcontextprotocol/sdk", "nodemailer", "@huggingface/transformers", "onnxruntime-node"],
+  serverExternalPackages: ["pg", "pg-cloudflare", "@modelcontextprotocol/sdk", "nodemailer", "@huggingface/transformers", "onnxruntime-node", "playwright"],
 
   // STRICT PUBLIC/APP BOUNDARY.
   // "/" serves the lightweight, fully static public landing page

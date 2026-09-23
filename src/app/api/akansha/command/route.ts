@@ -308,7 +308,7 @@ export async function POST(request: Request) {
               const resp: any = prov && await prov.generate({
                 model: decision.modelId,
                 messages: [
-                  { role: 'system', content: 'You are Akansha, a warm, concise personal assistant. Reply in one or two friendly sentences. Address the user as "Boss". Never claim to have performed actions.' },
+                  { role: 'system', content: 'You are Akansha, a warm, concise personal assistant. Reply in one or two friendly sentences. Address the user as "Boss". Never claim to have performed actions. Never state or invent which AI model or architecture powers you (do not name GPT, Claude, Gemini, etc.); Akansha selects the model per task and the live route is shown in the header — say that if asked.' },
                   { role: 'user', content: text },
                 ],
                 maxTokens: 120, temperature: 0.6,
@@ -332,7 +332,7 @@ export async function POST(request: Request) {
                   {
                     role: 'system',
                     content:
-                      'You are Akansha, a warm, concise personal assistant. Reply to short greetings/questions in one or two friendly sentences. Address the user as "Boss". Never claim to have performed actions.',
+                      'You are Akansha, a warm, concise personal assistant. Reply to short greetings/questions in one or two friendly sentences. Address the user as "Boss". Never claim to have performed actions. Never state or invent which AI model or architecture powers you (do not name GPT, Claude, Gemini, etc.); Akansha selects the model per task and the live route is shown in the header — say that if asked.',
                   },
                   { role: 'user', content: text },
                 ],

@@ -140,6 +140,9 @@ async function startBackend() {
         // installer ships voice/models; whisperProvider resolves it via this env so
         // a fresh, internet-less install transcribes on the very first utterance.
         AKANSHA_WHISPER_BUNDLE: app.isPackaged ? path.join(process.resourcesPath, 'voice', 'models') : '',
+        // Point Playwright to the bundled Chromium cache in the packaged app.
+        // In dev, this remains empty, seamlessly falling back to %LOCALAPPDATA%.
+        PLAYWRIGHT_BROWSERS_PATH: app.isPackaged ? path.join(process.resourcesPath, 'ms-playwright') : '',
         // Local desktop identity: the backend reads this instead of a
         // cwd-relative .akansha-auth.json, so a packaged install needs no
         // token file and no developer setup. On a single-owner desktop the

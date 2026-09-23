@@ -58,6 +58,10 @@ extraResources:
   - from: voice/models
     to: voice/models
     filter: ["**/*"]
+  # Bundled Chromium browser for Playwright to work entirely offline on a fresh install.
+  - from: resources/ms-playwright
+    to: ms-playwright
+    filter: ["**/*"]
 
 # ─────────── WINDOWS ───────────
 # build/icon.png (>= 256x256) is converted to .ico automatically by electron-builder.

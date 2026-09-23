@@ -30,7 +30,7 @@ export type EngineAvailability = Record<BrowserStrategy, boolean>;
 export const DEFAULT_ENGINES: EngineAvailability = {
   'direct-api': true,          // server-side fetch of a legitimate public endpoint
   'browser-open': true,        // existing browser.navigate (open a URL in a chosen browser)
-  'dom-deterministic': false,  // Playwright — not installed yet
+  'dom-deterministic': true,   // Playwright — installed and wired
   'ai-assisted': false,        // Stagehand — not installed yet
   'goal-agent': false,         // Browser Use — not installed yet
   'visual-form': false,        // Skyvern — not installed yet

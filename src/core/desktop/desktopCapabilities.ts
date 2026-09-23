@@ -3,6 +3,7 @@ import type { ActionRequest, Evidence, FailureCode } from '@/core/actions/types'
 import { resolveApp, expandEnv, type AppSpec } from '@/core/execution/appRegistry';
 import { windowsComputerUseProvider } from '@/core/execution/WindowsComputerUseProvider';
 import type { ProcessCloseResult } from '@/core/execution/types';
+import { searchFiles } from './filesResolver';
 
 /** Shell metacharacters are NEVER allowed in an application name — resolution is by
  *  allowlist alias to a fixed exe, never by interpolating user text into a shell. */
@@ -139,6 +140,38 @@ export function registerDesktopCapabilities(deps: {
     verify: ({ evidence }) => evidence && evidence.observed && evidence.kind === 'window' && !!evidence.data
       ? { verified: true, method: 'foregroundObserved', reason: evidence.summary }
       : { verified: false, method: 'foregroundObserved', reason: 'No observed foreground-window evidence' },
+  });
+
+  // ── desktop.files.searchAndOpen ──────────────────────────────────────────────
+  registry.register({
+    actionId: 'desktop.files.searchAndOpen',
+    capabilityId: 'desktop.control',
+    requiresConfirmation: true,
+    execute: async (req: ActionRequest) => {
+      const query = (req.payload || {}).query;
+      const browser = (req.payload || {}).browser;
+      if (platform !== 'win32') return fail('DESKTOP_CONTROL_UNAVAILABLE', 'platform', 'Desktop control is Windows-only in this build.');
+      if (typeof query !== 'string' || !query.trim()) return fail('UNKNOWN', 'validate', 'Empty search query.');
+
+      const results = await searchFiles(query);
+      if (results.length === 0) return fail('APP_NOT_FOUND', 'execute', `No files found matching "${query}".`);
+
+      const targetPath = results[0].path;
+      const targetApp = browser === 'edge' ? 'msedge' : browser || 'msedge';
+      
+      const obs = await launcher.launch(`"${targetPath}"`); // Or we could use Edge explicitly: launch(`${targetApp} "${targetPath}"`)
+      if (!obs.found) return fail('RUNTIME_START_FAILED', 'execute', `File ${targetPath} did not open.`);
+
+      const evidence: Evidence = {
+        kind: 'process', observed: true,
+        summary: `found and opened "${targetPath}"${browser ? ` in ${browser}` : ''}${obs.title ? ` — "${obs.title}"` : ''}`,
+        data: { query, path: targetPath, title: obs.title ?? null },
+      };
+      return { output: obs, evidence };
+    },
+    verify: ({ evidence }) => evidence && evidence.observed && evidence.kind === 'process'
+      ? { verified: true, method: 'processObserved', reason: evidence.summary }
+      : { verified: false, method: 'processObserved', reason: 'No observed process/window evidence' },
   });
 
   return registry;

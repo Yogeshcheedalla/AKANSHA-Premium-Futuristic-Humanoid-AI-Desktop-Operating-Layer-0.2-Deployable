@@ -29,6 +29,8 @@ const CLOSE = /^\s*(?:please\s+|can you\s+)?(?:close|quit|exit|kill|terminate|st
 const FOCUS = /^\s*(?:please\s+|can you\s+)?(?:focus|activate|raise|foreground|switch to)\s+(.+?)\s*[.!?,]*$/i;
 // "youtube in brave", "youtube in the brave browser", "gmail in google chrome"
 const IN_BROWSER = /^(.+?)\s+(?:in|using|with|on)\s+(?:the\s+)?(brave|chrome|google chrome|edge|microsoft edge|firefox|mozilla firefox|browser)(?:\s+browser)?\s*$/i;
+// File search variations: "open files, search Yogesh", "find Yogesh in my files", "search my files for Yogesh"
+const FILE_SEARCH = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:open\s+(?:the\s+)?files,?\s+search\s+(?:for\s+)?(.+?)(?:,?\s+and\s+open\s+it\s+in\s+(?:the\s+)?(.+?)(?:\s+browser)?)?|find\s+(.+?)\s+in\s+(?:my\s+)?files|search\s+(?:my\s+)?files\s+for\s+(.+?)|open\s+(?:the\s+)?(.+?)\s+file\s+in\s+(.+?)(?:\s+browser)?)\s*[.!?,]*$/i;
 
 const clean = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -39,6 +41,18 @@ export async function routeCommand(text: string): Promise<RoutedCommand | null> 
   let verb: 'open' | 'close' | 'focus' | null = null;
   let rest = '';
   let m: RegExpMatchArray | null;
+
+  // 0. Dedicated File Search Extraction
+  if ((m = t.match(FILE_SEARCH))) {
+    const query = clean(m[1] || m[3] || m[4] || m[5]);
+    const browser = clean(m[2] || m[6] || '');
+    return {
+      actionId: 'desktop.files.searchAndOpen' as any,
+      payload: { query, browser: browser || undefined },
+      label: `File search: ${query}${browser ? ` -> ${browser}` : ''}`
+    };
+  }
+
   if ((m = t.match(OPEN))) { verb = 'open'; rest = clean(m[1]); }
   else if ((m = t.match(CLOSE))) { verb = 'close'; rest = clean(m[1]); }
   else if ((m = t.match(FOCUS))) { verb = 'focus'; rest = clean(m[1]); }

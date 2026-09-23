@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GlassSurface } from '../core/GlassSurface';
 import { AkanshaPresence, type AIState } from '../assistant/AkanshaPresence';
 import { OrganicWaveform } from '../assistant/OrganicWaveform';
-import { audioEngine, parseVoiceSessionCommand, type VoiceState } from '../voice/AudioEngine';
+import { audioEngine, type VoiceState } from '../voice/AudioEngine';
 import { styleFromTurn } from '@/core/voice/emotion/emotionStyle';
 import { Mic, Send, Loader2, Zap } from 'lucide-react';
 
@@ -76,16 +76,52 @@ export const CommandWorkspace = ({ onNavigate }: { onNavigate?: (ws: string) => 
 
   useEffect(() => {
     if (!audioEngine) return;
-    const offFinal = audioEngine.onFinalUtterance((u) => {
-      setPartial('');
-      const cmd = parseVoiceSessionCommand(u.transcript);
-      if (cmd === 'stop') { audioEngine.stop(); return; }
-      if (cmd === 'start') { void (async () => { await audioEngine.start(); audioEngine.startListening(); })(); return; }
-      sendRef.current(u.transcript, u.utteranceId);
-    });
     const offPartial = audioEngine.onPartial((t) => setPartial(t));
     const offState = audioEngine.onState((s) => setVoiceState(s.state));
-    return () => { offFinal(); offPartial(); offState(); };
+
+    const onVoiceSent = (e: any) => {
+      setPartial('');
+      const text = e.detail?.text;
+      if (text) {
+        setMessages((prev) => [...prev, { text, sender: 'user' }]);
+        setBusy(true);
+        setState('thinking');
+      }
+    };
+    
+    const onVoiceResult = (e: any) => {
+      const data = e.detail;
+      setLast(data);
+      if (data.status && data.status !== 'COMPLETED') setState('verifying');
+      
+      const reply = data.response || data.error || 'No response.';
+      setTimeout(() => {
+        setMessages((prev) => [...prev, { text: reply, sender: 'akansha' }]);
+        setState(data.status === 'AI_PROVIDER_OFFLINE' ? 'error' : 'success');
+        setTimeout(() => setState('idle'), 2200);
+      }, 400);
+      setBusy(false);
+    };
+
+    const onVoiceError = (e: any) => {
+      const err = e.detail?.error;
+      setMessages((prev) => [...prev, { text: err, sender: 'akansha' }]);
+      setState('error');
+      setTimeout(() => setState('idle'), 2000);
+      setBusy(false);
+    };
+
+    window.addEventListener('akansha-voice-sent', onVoiceSent);
+    window.addEventListener('akansha-voice-result', onVoiceResult);
+    window.addEventListener('akansha-voice-error', onVoiceError);
+
+    return () => { 
+      offPartial(); 
+      offState(); 
+      window.removeEventListener('akansha-voice-sent', onVoiceSent);
+      window.removeEventListener('akansha-voice-result', onVoiceResult);
+      window.removeEventListener('akansha-voice-error', onVoiceError);
+    };
   }, []);
 
   // Desktop auto-unlock: inside the packaged app, the main process provides a

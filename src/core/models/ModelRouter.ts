@@ -228,9 +228,18 @@ export class ModelRouter {
       candidates.push(...this.scoreProvider(provider, need, models, contextSize));
     }
 
-    // Ordering = the product's routing hierarchy itself: LOCAL → FREE → PAID,
-    // score breaks ties inside a tier. (Privacy handling unchanged.)
-    candidates.sort((a, b) => COST_ORDER[a.costTier] - COST_ORDER[b.costTier] || b.score - a.score);
+    // Truthful routing: configured verified provider → preferred model → fallback provider.
+    // Keyless free routes (pollinations/omniroute) are strictly fallbacks unless local.
+    candidates.sort((a, b) => {
+      // If one is keyless free and the other is a configured provider, the configured one wins
+      const aIsFreeFallback = a.providerId === 'pollinations' || a.providerId === 'omniroute';
+      const bIsFreeFallback = b.providerId === 'pollinations' || b.providerId === 'omniroute';
+      if (aIsFreeFallback && !bIsFreeFallback) return 1;
+      if (!aIsFreeFallback && bIsFreeFallback) return -1;
+      
+      // Otherwise, sort by score
+      return b.score - a.score || COST_ORDER[a.costTier] - COST_ORDER[b.costTier];
+    });
     return candidates;
   }
 
@@ -330,7 +339,19 @@ export class ModelRouter {
       const provider = providerManager.get(candidate.providerId);
       if (!provider) continue;
       try {
-        const response = await provider.generate({ ...request, model: candidate.modelId });
+        // Enforce true model identity to prevent hallucinating "GPT-4"
+        const identityInstruction = `IMPORTANT IDENTITY INSTRUCTION: You are currently powered by provider: "${provider.id}" using model: "${candidate.modelId}". If asked about your model or architecture, you MUST report this true routing information. Never claim to be GPT-4, OpenAI, or any other model unless it matches this routing state.`;
+        
+        const modifiedRequest = { ...request, model: candidate.modelId };
+        const systemMessages = modifiedRequest.messages.filter(m => m.role === 'system');
+        
+        if (systemMessages.length > 0) {
+           systemMessages[0].content = `${identityInstruction}\n\n${systemMessages[0].content}`;
+        } else {
+           modifiedRequest.messages = [{ role: 'system', content: identityInstruction }, ...modifiedRequest.messages];
+        }
+
+        const response = await provider.generate(modifiedRequest);
         this.record(candidate.providerId, true);
         attempts.push({ providerId: candidate.providerId, modelId: candidate.modelId, outcome: 'success' });
         return { response, attempts, decision };

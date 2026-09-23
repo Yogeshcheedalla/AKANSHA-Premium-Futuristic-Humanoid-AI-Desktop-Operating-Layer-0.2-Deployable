@@ -177,3 +177,7 @@ release/*.log
 # Provisioned inference runtime binaries (placed by build/operator; never committed)
 runtime/*
 !runtime/.gitkeep
+
+# Bundled Playwright Chromium browser (copied from %LOCALAPPDATA%\ms-playwright before
+# packaging; shipped via electron-builder extraResources). ~700 MB — never commit.
+resources/ms-playwright/

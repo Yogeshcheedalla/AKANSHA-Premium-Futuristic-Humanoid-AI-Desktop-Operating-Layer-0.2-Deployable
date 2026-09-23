@@ -374,7 +374,15 @@ export class GeminiProvider extends OpenAICompatibleProvider {
       if (res.status === 401 || res.status === 403) {
         return { state: 'AUTH_REQUIRED', latencyMs, detail: 'Invalid API key', checkedAt: Date.now() };
       }
-      if (!res.ok) return { state: 'DEGRADED', latencyMs, detail: `HTTP ${res.status}`, checkedAt: Date.now() };
+      if (res.status === 429) {
+        return { state: 'DEGRADED', latencyMs, detail: 'RATE_LIMITED', checkedAt: Date.now() };
+      }
+      if (res.status === 400) {
+        return { state: 'DEGRADED', latencyMs, detail: 'INVALID_REQUEST', checkedAt: Date.now() };
+      }
+      if (!res.ok) {
+        return { state: 'DEGRADED', latencyMs, detail: `PROVIDER_ERROR (HTTP ${res.status})`, checkedAt: Date.now() };
+      }
       return { state: 'AVAILABLE', latencyMs, checkedAt: Date.now() };
     } catch {
       return { state: 'UNAVAILABLE', latencyMs: Date.now() - started, detail: 'unreachable', checkedAt: Date.now() };
