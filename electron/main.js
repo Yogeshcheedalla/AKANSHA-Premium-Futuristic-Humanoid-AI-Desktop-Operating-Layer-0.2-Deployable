@@ -12,7 +12,7 @@
 // ============================================================
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage, Tray, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, safeStorage, Tray, nativeImage, clipboard, session } = require('electron');
 const { spawn, exec } = require('child_process');
 const http = require('http');
 const net = require('net');
@@ -448,6 +448,14 @@ if (!gotLock) {
       backendLog = createBackendLogger(app.getPath('userData'));
       logEvent('info', 'app_start', { version: app.getVersion(), packaged: app.isPackaged, platform: process.platform });
     } catch { /* logging is best-effort */ }
+    // Grant microphone (voice input) to the renderer; deny every other sensitive
+    // permission. Without this a packaged Electron app can silently fail to capture
+    // mic audio, so voice input produces no transcript ("listening, no response").
+    try {
+      const ALLOW = new Set(['media', 'mediaKeySystem']);
+      session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(ALLOW.has(permission)));
+      session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOW.has(permission));
+    } catch { /* older Electron: default grant applies */ }
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         { label: 'Akansha', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'quit' }] },
