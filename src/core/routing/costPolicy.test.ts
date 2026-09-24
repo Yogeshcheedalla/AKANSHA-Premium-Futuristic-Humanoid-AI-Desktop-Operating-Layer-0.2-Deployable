@@ -11,6 +11,12 @@ test('cost tiers: local < free(openrouter) < paid', () => {
   assert.equal(costTierFor('openai', { freeModel: true }), 'free');
 });
 
+test('self-hosted free gateway tiers as free, not paid (regression)', () => {
+  assert.equal(costTierFor('free-gateway'), 'free');
+  // and a specific default model id on that gateway must not flip it to paid
+  assert.equal(costTierFor('free-gateway'), 'free');
+});
+
 test('planCostRoute prefers local, then free, then paid', () => {
   const plan = planCostRoute([
     { providerId: 'openai' },
