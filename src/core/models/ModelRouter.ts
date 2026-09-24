@@ -211,7 +211,8 @@ export class ModelRouter {
     taskType: string,
     requiredCapabilities: string[] = [],
     contextSize?: number,
-    privacySensitive = false
+    privacySensitive = false,
+    opts: { ignoreEligibility?: boolean } = {}
   ): Promise<RoutingCandidate[]> {
     await providerManager.load();
     const need = classifyTaskRequirement(taskType);
@@ -227,9 +228,13 @@ export class ModelRouter {
     // HARD eligibility gate from LIVE evidence (never from the catalog): a
     // provider whose cached health says auth-rejected / rate-limited / down is
     // not offered as a route at all until a fresh probe proves otherwise.
+    // EXCEPTION: a last-resort pass (ignoreEligibility) deliberately re-includes
+    // transiently-demoted FREE/LOCAL routes so a single rate-limit can never turn
+    // into a total outage — the router must exhaust real attempts before declaring
+    // "no route." Paid routes are still excluded from the last resort by the caller.
     const { providerBootstrap } = await import('../providers/providerBootstrap');
     for (const provider of providerManager.getAll()) {
-      if (!providerBootstrap.isEligible(provider.id)) continue;
+      if (!opts.ignoreEligibility && !providerBootstrap.isEligible(provider.id)) continue;
       const models = modelRegistry.listByProvider(provider.id);
       candidates.push(...this.scoreProvider(provider, need, models, contextSize));
     }
@@ -308,13 +313,30 @@ export class ModelRouter {
     taskType = 'reasoning',
     requiredCapabilities: string[] = [],
     opts: { requestId?: string; allowContinuation?: boolean; maxContinuations?: number } = {}
-  ): Promise<{ response: ModelResponse; attempts: FallbackAttempt[]; decision: RoutingDecision | null; failoverCount: number }> {
-    const chain = await this.fallbackChain(taskType, requiredCapabilities);
+  ): Promise<{ response: ModelResponse; attempts: FallbackAttempt[]; decision: RoutingDecision | null; failoverCount: number; degraded: boolean }> {
+    let chain = await this.fallbackChain(taskType, requiredCapabilities);
     const attempts: FallbackAttempt[] = [];
     const requestId = opts.requestId || `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let lastResort = false;
 
     if (chain.length === 0) {
-      throw new Error('No AI provider is configured with an available model.');
+      // Graceful degradation (spec: "if quota is done move to another automatically
+      // without breaking the task"): every eligible route is currently demoted, but
+      // that must NOT become a total outage. Re-rank IGNORING the eligibility gate and
+      // keep only FREE/LOCAL routes (never paid — no silent spend), so a transient
+      // rate-limit on one free provider still lets us TRY it (and any sibling free
+      // route) before honestly declaring no route.
+      const all = await this.rank(taskType, requiredCapabilities, undefined, false, { ignoreEligibility: true });
+      chain = all.filter((c) => c.costTier === 'free' || c.costTier === 'local');
+      if (chain.length > 0) {
+        lastResort = true;
+        eventBus.emit('model.selected', 'ModelRouter', {
+          requestId, note: 'last-resort free/local attempt (all routes transiently demoted)',
+          providers: Array.from(new Set(chain.map((c) => c.providerId))),
+        });
+      } else {
+        throw new Error('No AI provider is configured with an available model.');
+      }
     }
 
     const decision: RoutingDecision = {
@@ -398,7 +420,7 @@ export class ModelRouter {
           providerId: candidate.providerId, modelId: candidate.modelId, taskType, requestId,
           score: candidate.score, attempts: attempts.length, failoverCount, contextTrimmed: budgeted.trimmed,
         });
-        return { response, attempts, decision, failoverCount };
+        return { response, attempts, decision, failoverCount, degraded: lastResort };
       } catch (e: any) {
         this.record(candidate.providerId, false);
         const state: RouteHealthState = classifyRouteError(e?.message || '', (e as any)?.status);
