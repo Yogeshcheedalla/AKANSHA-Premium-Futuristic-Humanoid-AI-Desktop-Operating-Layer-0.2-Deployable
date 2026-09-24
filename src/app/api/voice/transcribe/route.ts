@@ -45,12 +45,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, code: 'TOO_LARGE', detail: 'Audio segment exceeds 25 MB' }, { status: 413 });
     }
 
-    const result = await transcribeAudio(Buffer.from(bytes), mime);
+    const result = await transcribeAudio(Buffer.from(bytes), mime, { allowCloud: process.env.AKANSHA_ASR_ALLOW_CLOUD === 'true' });
     if (result.ok) {
       return NextResponse.json({ ok: true, text: result.text, provider: result.providerId, model: result.model, latencyMs: result.latencyMs, local: result.local ?? false, asrMode: result.asrMode ?? null });
     }
     const status =
-      result.code === 'NO_TRANSCRIPTION_PROVIDER' || result.code === 'EMPTY_AUDIO' ? 503 :
+      result.code === 'NO_TRANSCRIPTION_PROVIDER' || result.code === 'EMPTY_AUDIO' || result.code.startsWith('LOCAL_STT_') ? 503 :
       result.code === 'RATE_LIMITED' ? 429 :
       result.code === 'AUTH_FAILED' ? 401 :
       result.code === 'UNAVAILABLE' ? 502 : 502;

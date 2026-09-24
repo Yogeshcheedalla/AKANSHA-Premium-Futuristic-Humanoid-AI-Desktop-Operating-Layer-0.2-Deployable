@@ -28,7 +28,7 @@ let root=null;for(const r of roots){try{if(fs.existsSync(require('path').join(r,
 if(!root){console.log(JSON.stringify({ok:false,error:'bundled model not found'}));process.exit(0);}
 const tf=require('@huggingface/transformers');const {pipeline,env}=tf;
 env.localModelPath=root;env.allowLocalModels=true;env.allowRemoteModels=false;
-(async()=>{try{const b=fs.readFileSync(process.argv[2]);const {data,sr}=dec(b);const audio=rs(data,sr,16000);const t=await pipeline('automatic-speech-recognition',process.env.AKANSHA_WHISPER_MODEL||'Xenova/whisper-base.en');const out=await t(audio);console.log(JSON.stringify({ok:true,text:String((out&&out.text)||'').trim()}));}catch(e){console.log(JSON.stringify({ok:false,error:String((e&&e.message)||e)}));}})();
+(async()=>{try{const b=fs.readFileSync(process.env.AKANSHA_WAV);const {data,sr}=dec(b);const audio=rs(data,sr,16000);const t=await pipeline('automatic-speech-recognition',process.env.AKANSHA_WHISPER_MODEL||'Xenova/whisper-base.en');const out=await t(audio);console.log(JSON.stringify({ok:true,text:String((out&&out.text)||'').trim()}));}catch(e){console.log(JSON.stringify({ok:false,error:String((e&&e.message)||e)}));}})();
 `;
 
 export async function transcribeViaWorker(wav: Buffer, timeoutMs = 60000): Promise<{ text: string }> {
@@ -36,7 +36,7 @@ export async function transcribeViaWorker(wav: Buffer, timeoutMs = 60000): Promi
   const file = join(dir, 'speech.wav');
   try {
     writeFileSync(file, wav);
-    const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+    const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1', AKANSHA_WAV: file };
     if (!env.AKANSHA_WHISPER_MODEL) env.AKANSHA_WHISPER_MODEL = 'Xenova/whisper-base.en';
     const child = spawn(process.execPath, ['-e', WORKER, file], { env, cwd: process.cwd() });
     const out = await new Promise<string>((resolve, reject) => {

@@ -27,7 +27,10 @@ export type TranscribeCode =
   | 'RATE_LIMITED'
   | 'UNAVAILABLE'
   | 'UPSTREAM_ERROR'
-  | 'EMPTY_AUDIO';
+  | 'EMPTY_AUDIO'
+  | 'LOCAL_STT_MODEL_MISSING'
+  | 'LOCAL_STT_WORKER_FAILED'
+  | 'LOCAL_STT_TRANSCRIPTION_FAILED';
 
 export interface TranscriptionCandidate {
   providerId: string;
@@ -148,7 +151,7 @@ async function callCandidate(c: TranscriptionCandidate, key: string, audio: Buff
  * fallback order and returns the FIRST real success. If none exist, the caller
  * gets NO_TRANSCRIPTION_PROVIDER — the UI must show that, never a fake transcript.
  */
-export async function transcribeAudio(audio: Buffer, mime: string, opts: { timeoutMs?: number } = {}): Promise<TranscriptionResult> {
+export async function transcribeAudio(audio: Buffer, mime: string, opts: { timeoutMs?: number; allowCloud?: boolean } = {}): Promise<TranscriptionResult> {
   if (!audio || audio.length === 0) return { ok: false, code: 'EMPTY_AUDIO', detail: 'No audio bytes received' };
 
   // 1. OFFLINE WHISPER first (PATH A) — run in a spawned plain-node worker because
@@ -162,7 +165,16 @@ export async function transcribeAudio(audio: Buffer, mime: string, opts: { timeo
       const proven = { local: true, asrMode: 'bundled' as const, model: localAsrModel(), providerId: 'local-whisper', latencyMs: Date.now() - t0 };
       return { ok: true, code: 'OK', text, ...proven };
     } catch (e) {
-      console.error('[voice] offline Whisper worker failed, falling through to cloud:', (e && (e as any).message) || String(e));
+      const msg = String((e && (e as any).message) || e);
+      console.error('[voice] offline Whisper worker failed:', msg);
+      // Never silently fall back to a paid cloud ASR. Local failure is an explicit
+      // local error unless the caller opted into cloud (opts.allowCloud).
+      if (!opts.allowCloud) {
+        const code: TranscribeCode = /model not found/i.test(msg) ? 'LOCAL_STT_MODEL_MISSING'
+          : /timeout/i.test(msg) ? 'LOCAL_STT_WORKER_FAILED'
+          : 'LOCAL_STT_TRANSCRIPTION_FAILED';
+        return { ok: false, code, detail: redactSecrets(msg).slice(0, 200) };
+      }
     }
   }
 
