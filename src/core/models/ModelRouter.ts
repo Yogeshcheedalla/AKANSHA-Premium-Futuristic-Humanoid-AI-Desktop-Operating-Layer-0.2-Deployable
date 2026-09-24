@@ -7,9 +7,15 @@ import type {
   ModelResponse,
   ModelStreamEvent,
   HealthStatus,
+  ChatMessage,
 } from './ModelProvider';
 import { eventBus } from '../events/EventBus';
 import { allRoutesPaid, modelCostTier, COST_ORDER, type CostTier } from '../routing/costPolicy';
+import { freeRouteRegistry } from '../routing/freeRouteRegistry';
+import { classifyRouteError, type RouteHealthState } from '../routing/routeHealth';
+import { budgetContext } from '../context/contextBudget';
+import { continueIfTruncated } from '../routing/continuation';
+import { fabricTrace, redactSecrets } from '../observability/fabricTrace';
 
 export interface RoutingCandidate {
   providerId: string;
@@ -300,10 +306,12 @@ export class ModelRouter {
   async generateWithFallback(
     request: ModelRequest,
     taskType = 'reasoning',
-    requiredCapabilities: string[] = []
-  ): Promise<{ response: ModelResponse; attempts: FallbackAttempt[]; decision: RoutingDecision | null }> {
+    requiredCapabilities: string[] = [],
+    opts: { requestId?: string; allowContinuation?: boolean; maxContinuations?: number } = {}
+  ): Promise<{ response: ModelResponse; attempts: FallbackAttempt[]; decision: RoutingDecision | null; failoverCount: number }> {
     const chain = await this.fallbackChain(taskType, requiredCapabilities);
     const attempts: FallbackAttempt[] = [];
+    const requestId = opts.requestId || `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     if (chain.length === 0) {
       throw new Error('No AI provider is configured with an available model.');
@@ -335,41 +343,89 @@ export class ModelRouter {
     }
     const ordered = [...firstPass, ...rest];
 
+    let failoverCount = 0;
     for (const candidate of ordered.slice(0, 8)) {
       const provider = providerManager.get(candidate.providerId);
       if (!provider) continue;
+      const isLocal = LOCAL_TYPES.has(provider.type);
+      const started = Date.now();
       try {
         // Enforce true model identity to prevent hallucinating "GPT-4"
         const identityInstruction = `IMPORTANT IDENTITY INSTRUCTION: You are currently powered by provider: "${provider.id}" using model: "${candidate.modelId}". If asked about your model or architecture, you MUST report this true routing information. Never claim to be GPT-4, OpenAI, or any other model unless it matches this routing state.`;
-        
-        const modifiedRequest = { ...request, model: candidate.modelId };
-        const systemMessages = modifiedRequest.messages.filter(m => m.role === 'system');
-        
-        if (systemMessages.length > 0) {
-           systemMessages[0].content = `${identityInstruction}\n\n${systemMessages[0].content}`;
-        } else {
-           modifiedRequest.messages = [{ role: 'system', content: identityInstruction }, ...modifiedRequest.messages];
+
+        // Build a FRESH enriched message list. Never mutate the caller's array or
+        // the shared system-message objects — previously every fallback attempt
+        // re-prepended the identity clause onto the same object. Then budget to the
+        // model's REAL context window (no trimming when the window is unknown).
+        const hasSystem = request.messages.some((m) => m.role === 'system');
+        const enrichedMessages: ChatMessage[] = hasSystem
+          ? request.messages.map((m) => (m.role === 'system' ? { ...m, content: `${identityInstruction}\n\n${m.content}` } : m))
+          : [{ role: 'system', content: identityInstruction }, ...request.messages];
+        const modelInfo = modelRegistry.listByProvider(candidate.providerId).find((m) => m.id === candidate.modelId);
+        const budgeted = budgetContext({ messages: enrichedMessages, contextWindow: modelInfo?.contextWindow, reserveForReply: request.maxTokens ?? 1024 });
+
+        const providerReq: ModelRequest = { ...request, model: candidate.modelId, messages: budgeted.messages };
+        let response = await provider.generate(providerReq);
+        this.record(candidate.providerId, true);
+        freeRouteRegistry.recordSuccess(candidate.providerId, candidate.modelId, Date.now() - started, {
+          costTier: candidate.costTier, local: isLocal, contextWindow: modelInfo?.contextWindow,
+        });
+
+        // Controlled continuation (spec #10): only when the provider STOPPED AT THE
+        // LENGTH CAP and the caller opted in. Bounded, never a claim of unlimited
+        // context. Existing 'stop' responses are untouched, so behavior is unchanged
+        // for every current caller.
+        if (opts.allowContinuation && response.finishReason === 'length') {
+          const cont = await continueIfTruncated({
+            base: { messages: budgeted.messages, maxTokens: request.maxTokens, temperature: request.temperature },
+            first: response,
+            maxContinuations: opts.maxContinuations ?? 2,
+            generate: (msgs, mt) => provider.generate({ ...providerReq, messages: msgs, maxTokens: mt }),
+          });
+          response = { ...response, content: cont.content, finishReason: cont.finishReason, usage: cont.usage ?? response.usage };
         }
 
-        const response = await provider.generate(modifiedRequest);
-        this.record(candidate.providerId, true);
+        const usage = response.usage;
+        fabricTrace.record({
+          requestId, providerId: candidate.providerId, modelId: candidate.modelId,
+          attempt: attempts.length + 1, status: 'success', latencyMs: Date.now() - started,
+          failoverCount, costTier: candidate.costTier, local: isLocal,
+          tokenUsage: usage ? { prompt: usage.promptTokens, completion: usage.completionTokens, total: usage.totalTokens } : undefined,
+          tokenUsageEstimated: !usage, at: Date.now(),
+        });
         attempts.push({ providerId: candidate.providerId, modelId: candidate.modelId, outcome: 'success' });
-        return { response, attempts, decision };
+        eventBus.emit('model.selected', 'ModelRouter', {
+          providerId: candidate.providerId, modelId: candidate.modelId, taskType, requestId,
+          score: candidate.score, attempts: attempts.length, failoverCount, contextTrimmed: budgeted.trimmed,
+        });
+        return { response, attempts, decision, failoverCount };
       } catch (e: any) {
         this.record(candidate.providerId, false);
+        const state: RouteHealthState = classifyRouteError(e?.message || '', (e as any)?.status);
+        freeRouteRegistry.recordFailure(candidate.providerId, candidate.modelId, Date.now() - started, state, e?.message);
         attempts.push({
           providerId: candidate.providerId,
           modelId: candidate.modelId,
           outcome: 'failure',
           error: e?.message || 'unknown error',
         });
+        fabricTrace.record({
+          requestId, providerId: candidate.providerId, modelId: candidate.modelId,
+          attempt: attempts.length, status: 'failure', latencyMs: Date.now() - started,
+          failureReason: redactSecrets(e?.message || 'unknown error'), routeHealth: state,
+          failoverCount, costTier: candidate.costTier, local: isLocal, at: Date.now(),
+        });
         // Self-heal: demote the route from live evidence (auth/billing/rate/down),
-        // so the NEXT request never re-tries a known-dead provider first.
+        // so the NEXT request never re-tries a known-dead provider first. Eligibility
+        // stays authoritative in providerBootstrap; the registry only measures.
         { const { providerBootstrap } = await import('../providers/providerBootstrap'); providerBootstrap.markRouteFailed(candidate.providerId, e?.message || ''); }
         eventBus.emit('recovery.started', 'ModelRouter', {
           from: candidate.providerId,
-          reason: e?.message,
+          requestId,
+          routeHealth: state,
+          reason: redactSecrets(e?.message),
         });
+        failoverCount += 1;
       }
     }
 

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { authorize } from '@/core/auth/guard';
 import { providerBootstrap } from '@/core/providers/providerBootstrap';
 import { systemDimensions } from '@/core/runtime/systemStatus';
+import { freeRouteRegistry } from '@/core/routing/freeRouteRegistry';
+import { fabricTrace } from '@/core/observability/fabricTrace';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +24,16 @@ export async function GET(request: Request) {
     await providerBootstrap.run(url.searchParams.get('refresh') === '1');
     const snapshot = providerBootstrap.currentView()!;
     const dimensions = systemDimensions(snapshot);
-    return NextResponse.json({ ok: true, dimensions, ...snapshot });
+    return NextResponse.json({
+      ok: true,
+      dimensions,
+      fabric: {
+        note: 'Continuous Free Inference Fabric — many free providers with automatic routing + failover and local fallback. This is graceful degradation, NOT unlimited quota.',
+        routes: freeRouteRegistry.dashboard(),
+        failover: fabricTrace.failoverStats(),
+      },
+      ...snapshot,
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'runtime status failed' }, { status: 500 });
   }

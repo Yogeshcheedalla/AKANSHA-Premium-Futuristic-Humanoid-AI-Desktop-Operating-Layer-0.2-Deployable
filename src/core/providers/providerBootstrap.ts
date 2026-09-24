@@ -180,7 +180,7 @@ class ProviderBootstrap {
       // no-key default) are proven here; whichever answers pins the free route so a
       // fresh install answers out-of-the-box. A gateway that isn't running fails
       // fast → UNAVAILABLE → skipped → Pollinations is used. Never a false "free".
-      for (const id of ['omniroute', 'pollinations', 'kilo', 'llm7', 'ovhcloud']) {
+      for (const id of ['omniroute', 'free-gateway', 'pollinations', 'kilo', 'llm7', 'ovhcloud']) {
         const r = routes.find((x) => x.providerId === id);
         if (r && r.enabled && !r.credentialConfigured) await this.probeKeyless(id);
       }

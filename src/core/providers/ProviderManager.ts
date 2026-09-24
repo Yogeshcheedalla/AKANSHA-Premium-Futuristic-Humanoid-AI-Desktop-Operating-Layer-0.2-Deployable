@@ -84,6 +84,13 @@ export class ProviderManager {
       // Keyless free default — so a fresh install can ANSWER before any setup.
       // Health-probed like every provider; only used when a live probe succeeds.
       { id: 'pollinations', name: 'Free AI (no key)', type: 'openai-compatible', baseUrl: 'https://text.pollinations.ai', keyless: true, defaultModel: 'openai', enabled: true, fallbackPriority: 55 },
+      // FreeLLMApi gateway (spec "Continuous Free Inference Fabric"): a single
+      // self-hosted OpenAI-compatible /v1 endpoint that fronts MANY upstream free
+      // providers with its own routing + failover. ENV-GATED: enabled ONLY when
+      // KANSHA_FREE_GATEWAY_URL is set, so a gateway that isn't running never
+      // pollutes routing (and the live startup probe marks it UNAVAILABLE anyway).
+      // This is one more FREE route in the pool — never a claim of unlimited quota.
+      { id: 'free-gateway', name: 'Free Gateway (self-hosted)', type: 'openai-compatible', baseUrl: process.env.KANSHA_FREE_GATEWAY_URL || 'http://127.0.0.1:8000/v1', keyless: true, freellmapi: true, defaultModel: process.env.KANSHA_FREE_GATEWAY_MODEL || 'auto', enabled: !!process.env.KANSHA_FREE_GATEWAY_URL, fallbackPriority: 53 },
     ];
   }
 
@@ -121,7 +128,7 @@ export class ProviderManager {
         isDefault: cfg.id === 'experiential',
         fallbackPriority: cfg.fallbackPriority ?? 100,
         capabilities: {},
-        settings: { temperature: 0.7, timeoutMs: 60000, keyless: cfg.keyless === true },
+        settings: { temperature: 0.7, timeoutMs: 60000, keyless: cfg.keyless === true, freellmapi: cfg.freellmapi === true },
         health: { status: 'UNKNOWN', latencyMs: 0 },
       }));
       if (isDbConfigured) {
@@ -268,6 +275,7 @@ export class ProviderManager {
         project: input.project,
         headers: input.headers,
         keyless: input.keyless === true,
+        freellmapi: input.freellmapi === true,
       },
       health: { status: 'UNKNOWN', latencyMs: 0 },
     };

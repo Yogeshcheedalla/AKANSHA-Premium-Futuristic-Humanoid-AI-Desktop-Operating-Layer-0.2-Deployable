@@ -32,6 +32,8 @@ export interface ProviderConfigInput {
   project?: string;
   headers?: Record<string, string>;
   keyless?: boolean;
+  /** Route this config through the named FreeLLMApi gateway adapter (see below). */
+  freellmapi?: boolean;
 }
 
 const DEFAULT_BASE_URLS: Record<ProviderType, string | undefined> = {
@@ -592,7 +594,45 @@ export class KeylessFreeProvider extends OpenAICompatibleProvider {
   }
 }
 
+/**
+ * FreeLLMApiProvider — the named "Continuous Free Inference Fabric" gateway
+ * adapter (spec item #1).
+ *
+ * It is a thin SUBCLASS of the proven KeylessFreeProvider so we reuse the exact
+ * OpenAI-compatible `/v1` engine (listModels / chat ping / generate) instead of
+ * copying a near-identical implementation. This adapter exists to integrate an
+ * external self-hosted free-gateway (e.g. freellmapi) that fronts MANY upstream
+ * free providers behind one `.../v1` endpoint: Akansha still does its own
+ * capability-aware routing + failover through the existing ModelRouter, and this
+ * provider is simply ONE more free route in the pool.
+ *
+ * Honesty rules (this is the whole point of the spec):
+ *  - We NEVER claim "unlimited tokens". A gateway cannot turn finite upstream
+ *    quotas into infinite ones; what it gives us is MORE ROUTES + failover, which
+ *    is exactly what makes the assistant degrade gracefully.
+ *  - Health is LIVE evidence only (a real probe), so a gateway that isn't running
+ *    honestly reports UNAVAILABLE and the router moves on — never a fake "free".
+ *  - It is keyless by default; if an operator's gateway needs a key they can add
+ *    one via the normal credential vault, and it is then treated as auth-gated.
+ */
+export class FreeLLMApiProvider extends KeylessFreeProvider {
+  constructor(config: ProviderConfigInput) {
+    super({
+      ...config,
+      // Default to a localhost free-gateway OpenAI surface if nothing was set;
+      // the caller (ProviderManager) gates whether this provider is enabled at all.
+      baseUrl: config.baseUrl || process.env.KANSHA_FREE_GATEWAY_URL || 'http://127.0.0.1:8000/v1',
+      keyless: config.keyless !== false,
+    });
+  }
+
+  /** Human-readable honesty note surfaced to the dashboard/catalog. */
+  static readonly honestyNote =
+    'Free-gateway route: many upstream free providers with routing + failover. Not unlimited quota — it degrades gracefully across providers, then to local.';
+}
+
 export function createProvider(config: ProviderConfigInput): ModelProvider {
+  if (config.freellmapi) return new FreeLLMApiProvider({ ...config, keyless: config.keyless !== false });
   if (config.keyless) return new KeylessFreeProvider(config);
   switch (config.type) {
     case 'ollama':
